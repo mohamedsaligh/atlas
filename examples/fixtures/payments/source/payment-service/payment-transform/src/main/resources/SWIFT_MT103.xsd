@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema"
+           xmlns:atlas="https://atlas.x/v1"
+           targetNamespace="https://atlas.x/fixtures/swift">
+
+    <xs:element name="MT103" type="Mt103Type"/>
+
+    <xs:complexType name="Mt103Type">
+        <xs:sequence>
+            <xs:element name="field_20" type="xs:string">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <atlas:business-key>TransactionReference</atlas:business-key>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:element>
+            <xs:element name="field_50K" type="xs:string">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <atlas:business-key>DebtorIBAN</atlas:business-key>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:element>
+            <xs:element name="field_32A" type="Field32AType"/>
+            <xs:element name="field_59" type="xs:string">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <atlas:business-key>CreditorIBAN</atlas:business-key>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="Field32AType">
+        <xs:sequence>
+            <xs:element name="value_date" type="xs:string">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <atlas:business-key>ValueDate</atlas:business-key>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:element>
+            <xs:element name="currency" type="xs:string">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <atlas:business-key>Currency</atlas:business-key>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:element>
+            <xs:element name="amount" type="xs:string">
+                <xs:annotation>
+                    <xs:appinfo>
+                        <atlas:business-key>Amount</atlas:business-key>
+                    </xs:appinfo>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+</xs:schema>

@@ -1,0 +1,133 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.x/schemas/atlas-config.schema.json",
+  "title": "Atlas Configuration (atlas.yml)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "projects"],
+  "properties": {
+    "version": { "type": "integer", "const": 1 },
+    "projects": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/Project" }
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "atlas_kb_path": { "type": "string" },
+        "atlas_kb_repo": { "type": "string" },
+        "local_cache":   { "type": "string" },
+        "sqlite_path":   { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "Project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "repos", "domain_pairs"],
+      "properties": {
+        "id":          { "type": "string", "minLength": 1 },
+        "description": { "type": "string" },
+        "repos": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/Repo" }
+        },
+        "domain_pairs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/DomainPair" }
+        }
+      }
+    },
+    "Repo": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "path"],
+      "properties": {
+        "id":   { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "bitbucket": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "base_url":    { "type": "string", "format": "uri" },
+            "project_key": { "type": "string" },
+            "repo_slug":   { "type": "string" },
+            "api_kind":    { "type": "string", "enum": ["server", "cloud"] }
+          }
+        },
+        "branches": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "tracked": { "type": "array", "items": { "type": "string" } },
+            "default": { "type": "string" }
+          }
+        }
+      }
+    },
+    "DomainPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "source", "target", "scan_packages"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+        "source": { "$ref": "#/$defs/SchemaRef" },
+        "target": { "$ref": "#/$defs/SchemaRef" },
+        "scan_packages": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" },
+          "description": "Globs relative to repo root."
+        },
+        "scope_inference": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["rules"],
+          "properties": {
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["pattern"],
+                "properties": {
+                  "pattern": { "type": "string" },
+                  "scope":   { "type": "object", "additionalProperties": true },
+                  "capture": { "type": "array", "items": { "type": "string" } }
+                }
+              }
+            }
+          }
+        },
+        "extractors": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ExtractorSpec" }
+        }
+      }
+    },
+    "SchemaRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "schema_file", "schema_kind"],
+      "properties": {
+        "name":        { "type": "string" },
+        "schema_file": { "type": "string" },
+        "schema_kind": { "type": "string", "enum": ["xsd", "json-schema", "proto", "fixedlen", "tagged"] }
+      }
+    },
+    "ExtractorSpec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type":    { "type": "string", "minLength": 1 },
+        "options": { "type": "object", "additionalProperties": true }
+      }
+    }
+  }
+}

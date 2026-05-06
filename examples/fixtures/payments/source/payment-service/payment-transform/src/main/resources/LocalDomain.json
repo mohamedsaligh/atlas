@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.x/fixtures/local-domain.json",
+  "title": "LocalDomain",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "txnRef": {
+      "type": "string",
+      "x-atlas-business-key": "TransactionReference"
+    },
+    "dbtrAcct": {
+      "type": "object",
+      "properties": {
+        "iban": {
+          "type": "string",
+          "x-atlas-business-key": "DebtorIBAN"
+        }
+      }
+    },
+    "cdtrAcct": {
+      "type": "object",
+      "properties": {
+        "iban": {
+          "type": "string",
+          "x-atlas-business-key": "CreditorIBAN"
+        }
+      }
+    },
+    "amt": {
+      "type": "object",
+      "properties": {
+        "value":     { "type": "string", "x-atlas-business-key": "Amount" },
+        "ccy":       { "type": "string", "x-atlas-business-key": "Currency" },
+        "valueDate": { "type": "string", "x-atlas-business-key": "ValueDate" }
+      }
+    },
+    "channel": { "type": "string" },
+    "purposeOfPayment": { "type": "string" }
+  }
+}

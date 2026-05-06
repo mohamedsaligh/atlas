@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.x/schemas/coverage-manifest.schema.json",
+  "title": "Atlas Coverage Manifest",
+  "description": "Per-extraction coverage telemetry. Build fails if unparseableFiles is non-empty or if mapper count drops > 2 sigma vs baseline.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "projectId",
+    "repoId",
+    "pairId",
+    "extractedAt",
+    "filesScanned",
+    "mappersDetected",
+    "edgesEmitted",
+    "unparseableFiles",
+    "unmatchedTargetFields",
+    "checksum"
+  ],
+  "properties": {
+    "schemaVersion": { "type": "integer", "const": 1 },
+    "projectId":     { "type": "string" },
+    "repoId":        { "type": "string" },
+    "pairId":        { "type": "string" },
+    "extractedAt":   { "type": "string", "format": "date-time" },
+    "gitSha":        { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+    "filesScanned":  { "type": "integer", "minimum": 0 },
+    "mappersDetected": { "type": "integer", "minimum": 0 },
+    "edgesEmitted":  { "type": "integer", "minimum": 0 },
+    "byMapperKind": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "byEdgeKind": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "unparseableFiles": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["file", "reason"],
+        "properties": {
+          "file":   { "type": "string" },
+          "line":   { "type": ["integer", "null"], "minimum": 1 },
+          "reason": { "type": "string" }
+        }
+      },
+      "description": "Files within scope that could not be parsed. Build MUST fail when non-empty."
+    },
+    "unmatchedTargetFields": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["targetPath", "schemaFile"],
+        "properties": {
+          "targetPath": { "type": "string" },
+          "schemaFile": { "type": "string" }
+        }
+      },
+      "description": "Fields declared in target schema but not written by any mapper in scope."
+    },
+    "ignoredByAnnotation": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Class FQNs or method ids skipped via @AtlasIgnore."
+    },
+    "extractorVersions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" }
+    },
+    "drift": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "baselineMappersDetected": { "type": ["integer", "null"], "minimum": 0 },
+        "deltaSigma":              { "type": ["number", "null"] },
+        "accepted":                { "type": "boolean", "default": false }
+      }
+    },
+    "checksum": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

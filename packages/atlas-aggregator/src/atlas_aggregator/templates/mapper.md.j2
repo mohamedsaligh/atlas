@@ -1,0 +1,27 @@
+---
+atlas_version: 1
+mapper_id: {{ mapper.mapper_id }}
+mapper_kind: {{ mapper.mapper_kind }}
+project: {{ mapper.project_id }}
+repo: {{ mapper.repo_id }}
+pair: {{ mapper.pair_id }}
+edge_count: {{ mapper.edges | length }}
+---
+
+# {{ mapper.mapper_id.split('#')[0].split('.')[-1] }}
+
+`{{ mapper.mapper_id }}` — `mapperKind: {{ mapper.mapper_kind }}` — pair: **{{ mapper.pair_id }}**
+
+## Field-level edges
+
+| edge_id | kind | source | → | target | expression | confidence |
+|---|---|---|---|---|---|---|
+{%- for e in edges_sorted %}
+| `{{ e.edgeId }}` | {{ e.kind }} | {%- if e.source %}`{{ e.source.path }}`{%- if e.source.businessKey %} _({{ e.source.businessKey }})_{% endif %}{%- else %}_(constant)_{%- endif %} | → | `{{ e.target.path }}`{%- if e.target.businessKey %} _({{ e.target.businessKey }})_{% endif %} | `{{ (e.expression or '') | replace('|', '\\|') }}` | {{ e.confidence }} |
+{%- endfor %}
+
+## Source code
+
+{% for e in edges_sorted %}
+- `{{ e.target.path }}` — [{{ e.git.file }}:{{ e.git.line }}]({{ e.git.browseUrl or '#' }}){% if e.staticHelperFqn %} — helper `{{ e.staticHelperFqn }}`{% endif %}
+{% endfor %}

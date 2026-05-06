@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://atlas.x/schemas/edge.schema.json",
+  "title": "Atlas Edge",
+  "description": "A single field-level lineage edge produced by an extractor.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "edgeId",
+    "mapperId",
+    "mapperKind",
+    "kind",
+    "target",
+    "git",
+    "confidence"
+  ],
+  "properties": {
+    "edgeId": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+\\.[a-z0-9_-]+\\.e_[0-9a-f]{8}$",
+      "description": "<service>.<pair>.e_<sha1(file+line+target+source)[:8]>"
+    },
+    "mapperId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Class FQN, or '<Class>#<method>::cluster_<lineRange>' for inline clusters."
+    },
+    "mapperKind": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the extractor that produced this edge. Built-ins: mapstruct, plain-java, fixedlen, tagged. Plugins may register new values."
+    },
+    "kind": {
+      "type": "string",
+      "enum": [
+        "field_copy",
+        "format",
+        "expression",
+        "constant",
+        "static_call",
+        "enrichment",
+        "conditional",
+        "collection_map",
+        "unmapped",
+        "intra_domain",
+        "opaque_copy"
+      ]
+    },
+    "source": {
+      "oneOf": [
+        { "$ref": "#/$defs/FieldRef" },
+        { "type": "null" }
+      ],
+      "description": "Null for kind in {constant, unmapped, computed-with-no-source}."
+    },
+    "target": { "$ref": "#/$defs/FieldRef" },
+    "expression": {
+      "type": ["string", "null"],
+      "description": "Pretty-printed RHS AST snippet (verbatim source)."
+    },
+    "staticHelperFqn": {
+      "type": ["string", "null"],
+      "description": "Set when kind=static_call or kind=expression with a static helper invocation."
+    },
+    "cardinality": {
+      "type": ["string", "null"],
+      "enum": ["1:1", "1:N", "N:1", "N:M", null]
+    },
+    "branchCondition": {
+      "type": ["string", "null"],
+      "description": "AST snippet of the predicate when kind=conditional."
+    },
+    "format_spec": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Encoder-specific shape: {offset,length} for fixedlen, {tag} for tagged."
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "common":     { "type": "boolean", "default": false },
+        "country":    { "type": ["string", "null"] },
+        "clearing":   { "type": ["string", "null"] },
+        "product":    { "type": ["string", "null"] },
+        "fieldGroup": { "type": ["string", "null"] }
+      }
+    },
+    "git": { "$ref": "#/$defs/GitRef" },
+    "testIds": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Test method ids (FQN#method) covering this edge."
+    },
+    "confidence": {
+      "type": "string",
+      "enum": ["high", "medium", "low"]
+    }
+  },
+  "$defs": {
+    "FieldRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "path", "schemaFile"],
+      "properties": {
+        "type":        { "type": "string", "description": "Java FQN of the holding class." },
+        "path":        { "type": "string", "description": "Dotted field path within the schema." },
+        "schemaFile":  { "type": "string", "description": "Schema file relative to repo root." },
+        "businessKey": { "type": ["string", "null"], "description": "Value of x-atlas-business-key on the field, when declared." }
+      }
+    },
+    "GitRef": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["repo", "sha", "file", "line"],
+      "properties": {
+        "repo":      { "type": "string", "description": "Repo URL (ssh or https) of origin." },
+        "sha":       { "type": "string", "pattern": "^[0-9a-f]{40}$" },
+        "file":      { "type": "string", "description": "Path relative to repo root." },
+        "line":      { "type": "integer", "minimum": 1 },
+        "browseUrl": { "type": ["string", "null"], "format": "uri" },
+        "blobSha":   { "type": ["string", "null"], "pattern": "^[0-9a-f]{40}$" }
+      }
+    }
+  }
+}

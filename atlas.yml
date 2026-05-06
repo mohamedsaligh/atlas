@@ -1,0 +1,71 @@
+# Atlas configuration. Validated against schemas/atlas-config.schema.json on every load.
+version: 1
+
+projects:
+  - id: payments-platform
+    description: Payment, sanctions, fraud microservices
+
+    repos:
+      - id: payment-service
+        path: examples/fixtures/payments/source/payment-service
+        bitbucket:
+          base_url: https://bitbucket.example.com
+          project_key: PMT
+          repo_slug: payment-service
+          api_kind: server
+        branches:
+          tracked: [main, "release/*"]
+          default: main
+
+    domain_pairs:
+      - id: mt103_to_local
+        source:
+          name: SWIFT MT103
+          schema_file: examples/fixtures/payments/source/payment-service/payment-transform/src/main/resources/SWIFT_MT103.xsd
+          schema_kind: xsd
+        target:
+          name: LocalDomain
+          schema_file: examples/fixtures/payments/source/payment-service/payment-transform/src/main/resources/LocalDomain.json
+          schema_kind: json-schema
+        scan_packages:
+          - "payment-transform/src/main/java/com/x/payment/mapper/common/**"
+          - "payment-transform/src/main/java/com/x/payment/mapper/sg/**"
+        scope_inference:
+          rules:
+            - pattern: "**/mapper/common/**"
+              scope: { common: true }
+            - pattern: "**/mapper/{country}/{clearing}/**"
+              capture: [country, clearing]
+            - pattern: "**/mapper/{country}/**"
+              capture: [country]
+        extractors:
+          - type: mapstruct
+          - type: plain-java
+            options:
+              cluster_min_writes: 3
+              follow_helpers: true
+              max_helper_depth: 3
+
+      - id: local_to_sanctions_fixedlen
+        source:
+          name: LocalDomain
+          schema_file: examples/fixtures/payments/source/payment-service/payment-transform/src/main/resources/LocalDomain.json
+          schema_kind: json-schema
+        target:
+          name: SanctionsFixedLen
+          schema_file: examples/fixtures/payments/source/payment-service/payment-transform/src/main/resources/sanctions-spec.yaml
+          schema_kind: fixedlen
+        scan_packages:
+          - "payment-transform/src/main/java/com/x/payment/encoder/**"
+        scope_inference:
+          rules:
+            - pattern: "**/encoder/common/**"
+              scope: { common: true }
+        extractors:
+          - type: plain-java
+          - type: fixedlen-encoder
+
+storage:
+  atlas_kb_path: ./.atlas-kb
+  local_cache: ~/.atlas/cache
+  sqlite_path: ~/.atlas/index.db
