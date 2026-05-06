@@ -132,18 +132,18 @@ public final class AtlasConfig {
 
     public static final class DomainPair {
         public final String id;
-        public final SchemaRef source;
-        public final SchemaRef target;
+        public final List<SchemaRef> sources;
+        public final List<SchemaRef> targets;
         public final List<String> scanPackages;
         public final List<ScopeRule> scopeRules;
         public final List<ExtractorSpec> extractors;
 
-        public DomainPair(String id, SchemaRef source, SchemaRef target,
+        public DomainPair(String id, List<SchemaRef> sources, List<SchemaRef> targets,
                           List<String> scanPackages, List<ScopeRule> scopeRules,
                           List<ExtractorSpec> extractors) {
             this.id = id;
-            this.source = source;
-            this.target = target;
+            this.sources = sources;
+            this.targets = targets;
             this.scanPackages = scanPackages;
             this.scopeRules = scopeRules;
             this.extractors = extractors;
@@ -151,8 +151,8 @@ public final class AtlasConfig {
 
         @SuppressWarnings("unchecked")
         static DomainPair parse(Map<String, Object> m) {
-            SchemaRef src = SchemaRef.parse((Map<String, Object>) m.get("source"));
-            SchemaRef tgt = SchemaRef.parse((Map<String, Object>) m.get("target"));
+            List<SchemaRef> sources = SchemaRef.parseListOrObject(m.get("source"));
+            List<SchemaRef> targets = SchemaRef.parseListOrObject(m.get("target"));
             List<String> packages = (List<String>) m.getOrDefault("scan_packages", List.of());
             List<ScopeRule> rules = new ArrayList<>();
             Map<String, Object> si = (Map<String, Object>) m.get("scope_inference");
@@ -174,19 +174,39 @@ public final class AtlasConfig {
             }
             return new DomainPair(
                     (String) m.get("id"),
-                    src, tgt, packages, rules, extractors
+                    sources, targets, packages, rules, extractors
             );
         }
     }
 
-    public record SchemaRef(String name, String schemaFile, String schemaKind) {
+    public record SchemaRef(String name, String schemaFile, String schemaKind, List<String> typeFqns) {
         @SuppressWarnings("unchecked")
         static SchemaRef parse(Map<String, Object> m) {
+            List<String> fqns = (List<String>) m.getOrDefault("type_fqns", List.of());
             return new SchemaRef(
                     (String) m.get("name"),
                     (String) m.get("schema_file"),
-                    (String) m.get("schema_kind")
+                    (String) m.get("schema_kind"),
+                    fqns == null ? List.of() : fqns
             );
+        }
+
+        @SuppressWarnings("unchecked")
+        static List<SchemaRef> parseListOrObject(Object value) {
+            if (value == null) return List.of();
+            if (value instanceof List<?> list) {
+                List<SchemaRef> out = new ArrayList<>();
+                for (Object item : list) {
+                    if (item instanceof Map<?, ?> map) {
+                        out.add(parse((Map<String, Object>) map));
+                    }
+                }
+                return out;
+            }
+            if (value instanceof Map<?, ?> map) {
+                return List.of(parse((Map<String, Object>) map));
+            }
+            return List.of();
         }
     }
 

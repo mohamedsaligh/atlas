@@ -17,7 +17,7 @@ edge_count: {{ mapper.edges | length }}
 | edge_id | kind | source | → | target | expression | confidence |
 |---|---|---|---|---|---|---|
 {%- for e in edges_sorted %}
-| `{{ e.edgeId }}` | {{ e.kind }} | {%- if e.source %}`{{ e.source.path }}`{%- if e.source.businessKey %} _({{ e.source.businessKey }})_{% endif %}{%- else %}_(constant)_{%- endif %} | → | `{{ e.target.path }}`{%- if e.target.businessKey %} _({{ e.target.businessKey }})_{% endif %} | `{{ (e.expression or '') | replace('|', '\\|') }}` | {{ e.confidence }} |
+| `{{ e.edgeId }}` | {{ e.kind }} | {%- if e.source %}`{{ e.source.path }}`{%- if e.source.businessKey %} _({{ e.source.businessKey }})_{% endif %}{%- elif e.kind == 'unmapped' %}_—_{%- else %}_(constant)_{%- endif %} | → | `{{ e.target.path }}`{%- if e.target.businessKey %} _({{ e.target.businessKey }})_{% endif %} | `{{ (e.expression or '') | replace('|', '\\|') }}` | {{ e.confidence }} |
 {%- endfor %}
 
 ## Source code

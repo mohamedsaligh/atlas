@@ -76,8 +76,18 @@
       "required": ["id", "source", "target", "scan_packages"],
       "properties": {
         "id": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
-        "source": { "$ref": "#/$defs/SchemaRef" },
-        "target": { "$ref": "#/$defs/SchemaRef" },
+        "source": {
+          "oneOf": [
+            { "$ref": "#/$defs/SchemaRef" },
+            { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SchemaRef" } }
+          ]
+        },
+        "target": {
+          "oneOf": [
+            { "$ref": "#/$defs/SchemaRef" },
+            { "type": "array", "minItems": 1, "items": { "$ref": "#/$defs/SchemaRef" } }
+          ]
+        },
         "scan_packages": {
           "type": "array",
           "minItems": 1,
@@ -117,7 +127,12 @@
       "properties": {
         "name":        { "type": "string" },
         "schema_file": { "type": "string" },
-        "schema_kind": { "type": "string", "enum": ["xsd", "json-schema", "proto", "fixedlen", "tagged"] }
+        "schema_kind": { "type": "string", "enum": ["xsd", "json-schema", "proto", "fixedlen", "tagged"] },
+        "type_fqns":   {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "description": "Java FQNs that map to this schema. Required when source or target is a list (>1 entry) — used to disambiguate which schema an edge's source/target type belongs to."
+        }
       }
     },
     "ExtractorSpec": {

@@ -80,11 +80,13 @@ public class ExtractMojo extends AbstractMojo {
                         Orchestrator.RunResult r = orchestrator.runPair(
                                 project, repo, pair,
                                 declaredRepoRoot, sourceRoots, classpath, Map.of());
-                        getLog().info(String.format("Atlas: %s edges=%d files=%d mappers=%d",
-                                pair.id,
-                                r.manifest().stats().edgesEmitted(),
-                                r.manifest().stats().filesScanned(),
-                                r.manifest().stats().mappersDetected()));
+                        for (var m : r.manifests()) {
+                            getLog().info(String.format("Atlas: %s edges=%d files=%d mappers=%d",
+                                    m.pairId(),
+                                    m.stats().edgesEmitted(),
+                                    m.stats().filesScanned(),
+                                    m.stats().mappersDetected()));
+                        }
                         anyUnparseable |= r.hasUnparseable();
                     } catch (IOException e) {
                         throw new MojoFailureException("Atlas extract failed: " + e.getMessage(), e);

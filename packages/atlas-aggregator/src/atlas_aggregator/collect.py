@@ -41,10 +41,12 @@ def collect_manifests(
     for project in cfg.projects:
         for repo in project.repos:
             repo_root = (config_dir / repo.path).resolve()
-            for pair in project.domain_pairs:
-                manifest_path = repo_root / "target" / "atlas" / "manifests" / f"{pair.id}.manifest.json"
-                if not manifest_path.is_file():
-                    continue
+            manifests_dir = repo_root / "target" / "atlas" / "manifests"
+            if not manifests_dir.is_dir():
+                continue
+            # Read every *.manifest.json. With multi-source/target pairs each base
+            # pair_id can expand to several `<base>__<src>_to_<tgt>` manifests.
+            for manifest_path in sorted(manifests_dir.glob("*.manifest.json")):
                 raw = json.loads(manifest_path.read_text(encoding="utf-8"))
                 validator.validate(raw)
                 _verify_checksum(raw)

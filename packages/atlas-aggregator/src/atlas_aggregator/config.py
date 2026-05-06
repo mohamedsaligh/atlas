@@ -8,7 +8,7 @@ from typing import Any
 
 import jsonschema
 import yaml
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 
 
 class SchemaRef(BaseModel):
@@ -16,6 +16,7 @@ class SchemaRef(BaseModel):
     name: str
     schema_file: str
     schema_kind: str
+    type_fqns: list[str] = []
 
 
 class ScopeRule(BaseModel):
@@ -34,11 +35,20 @@ class ExtractorSpec(BaseModel):
 class DomainPair(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
     id: str
-    source: SchemaRef
-    target: SchemaRef
+    source: list[SchemaRef]
+    target: list[SchemaRef]
     scan_packages: list[str]
     scope_inference: dict[str, Any] | None = None
     extractors: list[ExtractorSpec] | None = None
+
+    @field_validator("source", "target", mode="before")
+    @classmethod
+    def _accept_list_or_object(cls, v: Any) -> Any:
+        if v is None:
+            return []
+        if isinstance(v, dict):
+            return [v]
+        return v
 
 
 class Repo(BaseModel):
