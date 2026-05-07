@@ -49,25 +49,31 @@ public final class JavaParserHarness {
     private final JavaParser parser;
 
     public JavaParserHarness(List<Path> sourceRoots, List<Path> classpath) {
-        CombinedTypeSolver solver = new CombinedTypeSolver();
-        solver.add(new ReflectionTypeSolver());
-        for (Path root : sourceRoots) {
-            if (Files.exists(root)) {
-                solver.add(new JavaParserTypeSolver(root.toFile()));
-            }
-        }
-        for (Path jar : classpath) {
-            if (Files.exists(jar) && jar.toString().endsWith(".jar")) {
-                try {
-                    solver.add(new JarTypeSolver(jar.toFile()));
-                } catch (IOException e) {
-                    throw new UncheckedIOException("Failed to add jar to type solver: " + jar, e);
+        // Symbol solving is intentionally OFF by default — it hangs on large
+        // generated impls with deep classpath. Type FQN resolution is delegated
+        // to TypeResolver (import-table based, O(1) per lookup, no class loading).
+        // Set -Datlas.useSymbolSolver=true to opt in for richer resolution.
+        ParserConfiguration cfg = new ParserConfiguration()
+                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
+        if (Boolean.getBoolean("atlas.useSymbolSolver")) {
+            CombinedTypeSolver solver = new CombinedTypeSolver();
+            solver.add(new ReflectionTypeSolver());
+            for (Path root : sourceRoots) {
+                if (Files.exists(root)) {
+                    solver.add(new JavaParserTypeSolver(root.toFile()));
                 }
             }
+            for (Path jar : classpath) {
+                if (Files.exists(jar) && jar.toString().endsWith(".jar")) {
+                    try {
+                        solver.add(new JarTypeSolver(jar.toFile()));
+                    } catch (IOException e) {
+                        throw new UncheckedIOException("Failed to add jar to type solver: " + jar, e);
+                    }
+                }
+            }
+            cfg.setSymbolResolver(new JavaSymbolSolver(solver));
         }
-        ParserConfiguration cfg = new ParserConfiguration()
-                .setSymbolResolver(new JavaSymbolSolver(solver))
-                .setLanguageLevel(ParserConfiguration.LanguageLevel.JAVA_17);
         this.parser = new JavaParser(cfg);
     }
 

@@ -14,6 +14,7 @@ import com.x.atlas.core.spi.ExtractorContext;
 import com.x.atlas.core.spi.ExtractorResult;
 import com.x.atlas.core.spi.MappingExtractor;
 import com.x.atlas.plugin.ast.JavaParserHarness;
+import com.x.atlas.plugin.ast.TypeResolver;
 import com.x.atlas.plugin.git.GitRefCapture;
 import java.nio.file.Path;
 import java.util.*;
@@ -72,7 +73,8 @@ public final class MapStructImplExtractor implements MappingExtractor {
 
         Map<String, MethodDeclaration> helpers = new HashMap<>();
         ExtractorResult.Builder rb = ExtractorResult.builder();
-        Walker walker = new Walker(ctx, candidate, impl, helpers, rb);
+        TypeResolver typeResolver = new TypeResolver(cu);
+        Walker walker = new Walker(ctx, candidate, impl, helpers, rb, typeResolver);
 
         for (MethodDeclaration m : impl.getMethods()) {
             helpers.put(m.getNameAsString(), m);
@@ -105,12 +107,14 @@ public final class MapStructImplExtractor implements MappingExtractor {
         private final ScopeInferenceEngine scopeEngine;
         private final GitRefCapture git;
         private final String mapperFqn;
+        private final TypeResolver typeResolver;
 
         private String mapperId;
         private FieldRef targetTypeRef;
 
         Walker(ExtractorContext ctx, Path file, ClassOrInterfaceDeclaration impl,
-               Map<String, MethodDeclaration> helpers, ExtractorResult.Builder rb) {
+               Map<String, MethodDeclaration> helpers, ExtractorResult.Builder rb,
+               TypeResolver typeResolver) {
             this.ctx = ctx;
             this.file = file;
             this.impl = impl;
@@ -119,6 +123,7 @@ public final class MapStructImplExtractor implements MappingExtractor {
             this.scopeEngine = new ScopeInferenceEngine(ctx.scopeRules());
             this.git = GitRefCapture.forRepo(ctx.repoRoot());
             this.mapperFqn = impl.getFullyQualifiedName().orElse(impl.getNameAsString());
+            this.typeResolver = typeResolver;
         }
 
         void walkEntry(MethodDeclaration entry) {
@@ -460,14 +465,13 @@ public final class MapStructImplExtractor implements MappingExtractor {
             return null;
         }
 
-        private static String extractStaticHelperFqn(Expression rhs) {
+        private String extractStaticHelperFqn(Expression rhs) {
             if (!(rhs instanceof MethodCallExpr call)) return null;
             if (!isStaticHelperCall(call)) return null;
-            try {
-                return call.resolve().getQualifiedName();
-            } catch (RuntimeException e) {
-                return call.getScope().map(Object::toString).orElse(null) + "." + call.getNameAsString();
-            }
+            String scope = call.getScope().map(Object::toString).orElse(null);
+            if (scope == null) return null;
+            String fqnScope = typeResolver.resolve(scope);
+            return fqnScope + "." + call.getNameAsString();
         }
 
         private static String getterToField(String getter) {
@@ -482,20 +486,12 @@ public final class MapStructImplExtractor implements MappingExtractor {
             return getter;
         }
 
-        private static String resolveReturn(MethodDeclaration m) {
-            try {
-                return m.getType().resolve().describe();
-            } catch (Exception e) {
-                return m.getType().toString();
-            }
+        private String resolveReturn(MethodDeclaration m) {
+            return typeResolver.resolve(m.getType().toString());
         }
 
-        private static String resolveParam(Parameter p) {
-            try {
-                return p.getType().resolve().describe();
-            } catch (Exception e) {
-                return p.getType().toString();
-            }
+        private String resolveParam(Parameter p) {
+            return typeResolver.resolve(p.getType().toString());
         }
 
         private String lookupBusinessKey(String schemaFile, String path) {
