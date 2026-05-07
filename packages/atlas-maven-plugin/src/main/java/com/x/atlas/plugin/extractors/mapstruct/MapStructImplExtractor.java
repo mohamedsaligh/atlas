@@ -35,7 +35,7 @@ import java.util.*;
  */
 public final class MapStructImplExtractor implements MappingExtractor {
 
-    private static final String ID = "mapstruct";
+    private static final String ID = "mapstruct-ast";
     private static final String VERSION = "0.1.0";
     private static final String GENERATED_MARKER = "org.mapstruct.ap.MappingProcessor";
 

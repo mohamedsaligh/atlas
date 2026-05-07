@@ -1,2 +1,3 @@
+com.x.atlas.plugin.extractors.mapstruct.MapStructFastImplExtractor
 com.x.atlas.plugin.extractors.mapstruct.MapStructImplExtractor
 com.x.atlas.plugin.extractors.plain.PlainJavaExtractor
