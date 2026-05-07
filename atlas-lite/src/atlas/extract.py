@@ -185,9 +185,11 @@ def _run_pair_repo(
     result = ExtractResult()
     repo_root = Path(repo.path).expanduser().resolve()
 
-    candidates = _scan_files(cfg_dir, pair.scan_globs, repo_root)
+    extended_globs = _auto_extend_globs(pair.scan_globs)
+    candidates = _scan_files(cfg_dir, extended_globs, repo_root)
     if verbose:
-        print(f"[atlas] scanned {len(candidates)} candidate(s) for pair={pair.id}", file=sys.stderr)
+        print(f"[atlas] scanned {len(candidates)} candidate(s) for pair={pair.id} "
+              f"(globs={len(extended_globs)})", file=sys.stderr)
     result.files_scanned = len(candidates)
 
     sources = pair.effective_sources()
@@ -305,11 +307,11 @@ class FileWalker:
             return
 
         kind = self._classify_class(text, class_fqn)
-        mapper_added = False
 
         # Entry methods: @Override annotated, OR public top-level (in non-MapStruct
         # mappers) that constructs a fresh target. Helpers (non-@Override) are only
         # walked via recursion from a setter.
+        edges_before = len(result.edges)
         for name, m in methods.items():
             if kind == "mapstruct-impl" and not _has_override(m, text):
                 continue  # helpers walked only via recursion
@@ -319,19 +321,20 @@ class FileWalker:
             self._walk_method(
                 m, text, class_fqn, name, params, methods, "", imports, result, kind
             )
-            if not mapper_added:
-                mapper_added = True
-                browse_url = self._browse_url(0)
-                result.mappers.append(MapperBlock(
-                    fqn=class_fqn,
-                    kind=kind,
-                    pair_id=self.pair.id,
-                    repo_id=self.repo.id,
-                    file=self.rel,
-                    sha=self.sha,
-                    browse_url=browse_url,
-                    scope=self.scope,
-                ))
+        # Only record the mapper if it actually emitted edges (drops phantom
+        # interface entries that have no body — they're not mappers, just signatures).
+        if len(result.edges) > edges_before:
+            browse_url = self._browse_url(0)
+            result.mappers.append(MapperBlock(
+                fqn=class_fqn,
+                kind=kind,
+                pair_id=self.pair.id,
+                repo_id=self.repo.id,
+                file=self.rel,
+                sha=self.sha,
+                browse_url=browse_url,
+                scope=self.scope,
+            ))
 
     def _walk_method(
         self,
@@ -906,6 +909,23 @@ def _build_fqn_map(refs: list[SchemaRef]) -> dict[str, SchemaRef]:
 
 
 _SKIP_DIRS = {".git", ".idea", ".vscode", ".gradle", "node_modules", "build", "out", "bin", "dist"}
+
+
+def _auto_extend_globs(globs: list[str]) -> list[str]:
+    """Add corresponding target/generated-sources/annotations/** for any glob
+    that points at src/main/java. MapStruct generated impls live there and
+    are the source of truth for mapping edges."""
+    extended = list(globs)
+    seen: set[str] = set()
+    for g in globs:
+        idx = g.find("/src/main/java/")
+        if idx > 0:
+            module_prefix = g[:idx]
+            gen = f"{module_prefix}/target/generated-sources/annotations/**/*.java"
+            if gen not in seen:
+                seen.add(gen)
+                extended.append(gen)
+    return extended
 
 
 def _scan_files(cfg_dir: Path, globs: list[str], repo_root: Path) -> list[Path]:
