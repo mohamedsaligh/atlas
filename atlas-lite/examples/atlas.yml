@@ -1,0 +1,40 @@
+# Atlas Lite configuration. Validated against schemas/atlas-config.schema.json.
+version: 1
+
+bitbucket:
+  base_url: https://bitbucket.example.com
+  api_kind: server
+  auth: { token_env: BITBUCKET_TOKEN }
+  browse_template: "{base}/projects/{project}/repos/{repo}/browse/{file}?at={sha}#{line}"
+
+repos:
+  - id: payment-service
+    path: ./examples/fixtures/tiny-mapstruct/payment-service
+    project: PMT
+    branch: main
+
+# Multiple sources per pair. Pairs compose via business_key.
+pairs:
+  - id: mt103_to_local
+    sources:
+      - { name: "SWIFT MT103", file: examples/fixtures/tiny-mapstruct/payment-service/payment-transform/src/main/resources/SWIFT_MT103.xsd, kind: xsd, type_fqns: ["com.x.payment.model.source.Mt103"] }
+    targets:
+      - { name: "LocalDomain", file: examples/fixtures/tiny-mapstruct/payment-service/payment-transform/src/main/resources/LocalDomain.json, kind: json-schema, type_fqns: ["com.x.payment.model.local.LocalDomain"] }
+    scan_globs:
+      - "payment-service/**/com/x/payment/mapper/common/**/*.java"
+      - "payment-service/**/com/x/payment/mapper/{country}/**/*.java"
+      - "payment-service/**/com/x/payment/mapper/{country}/{clearing}/**/*.java"
+    scope_rules:
+      - { glob: "**/mapper/common/**", scope: { common: true } }
+
+schedule:
+  full: "0 2 * * 0"
+  incremental: "0 3 * * *"
+
+storage:
+  db_path: ~/.atlas/atlas.db
+  site_path: ~/.atlas/site
+  cache_path: ~/.atlas/cache
+
+mcp_port: 4281
+ui_port: 4280

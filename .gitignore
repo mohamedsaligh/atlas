@@ -4,7 +4,7 @@ build/
 dist/
 *.class
 *.jar
-!packages/**/lib/*.jar
+!**/lib/*.jar
 
 # Python
 __pycache__/
@@ -17,6 +17,8 @@ __pycache__/
 ~/.atlas/
 .atlas/cache/
 .atlas/index.db
+.atlas-kb/
+**/atlas-kb/
 
 # IDE
 .idea/
@@ -27,9 +29,20 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
-# Atlas KB local
-.atlas-kb/
-
 # Logs
 *.log
+
+# Local config (each subproject has its own example template)
 /atlas.yml
+atlas-java/atlas.yml
+atlas-lite/atlas.yml
+
+# Tree-sitter build artefacts
+*.so
+*.dylib
+build-tree-sitter/
+
+# Node / web
+node_modules/
+ui/dist/
+ui/.vite/

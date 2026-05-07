@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LocalDomain",
+  "type": "object",
+  "properties": {
+    "txnRef":   { "type": "string", "x-atlas-business-key": "TransactionReference" },
+    "dbtrAcct": { "type": "object", "properties": { "iban": { "type": "string", "x-atlas-business-key": "DebtorIBAN" } } },
+    "cdtrAcct": { "type": "object", "properties": { "iban": { "type": "string", "x-atlas-business-key": "CreditorIBAN" } } },
+    "channel":  { "type": "string" }
+  }
+}
