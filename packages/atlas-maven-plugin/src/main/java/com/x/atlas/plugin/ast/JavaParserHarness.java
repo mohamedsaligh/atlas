@@ -14,7 +14,9 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Wires JavaParser + JavaSymbolSolver. One harness per (project, repo, pair).
@@ -23,6 +25,26 @@ import java.util.Optional;
  * in), so symbol resolution sees the user's actual dependencies.
  */
 public final class JavaParserHarness {
+
+    private static final Map<String, JavaParserHarness> CACHE = new ConcurrentHashMap<>();
+
+    /**
+     * Get a cached harness for the given (sourceRoots, classpath) pair, or build one.
+     * Building is O(jars) — without caching, the orchestrator paid this cost per file
+     * and ran for hours on real codebases.
+     */
+    public static JavaParserHarness forContext(List<Path> sourceRoots, List<Path> classpath) {
+        String key = cacheKey(sourceRoots, classpath);
+        return CACHE.computeIfAbsent(key, k -> new JavaParserHarness(sourceRoots, classpath));
+    }
+
+    private static String cacheKey(List<Path> sourceRoots, List<Path> classpath) {
+        StringBuilder sb = new StringBuilder();
+        for (Path p : sourceRoots) sb.append(p.toAbsolutePath().toString()).append('|');
+        sb.append("##");
+        for (Path p : classpath) sb.append(p.toAbsolutePath().toString()).append('|');
+        return sb.toString();
+    }
 
     private final JavaParser parser;
 

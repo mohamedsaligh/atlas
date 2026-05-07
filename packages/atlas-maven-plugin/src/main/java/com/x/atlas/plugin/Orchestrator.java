@@ -89,12 +89,17 @@ public final class Orchestrator {
         }
         extendedPackages.addAll(generatedRoots);
 
+        long scanStart = System.currentTimeMillis();
         List<Path> candidates = PathScanner.scan(repoRoot, extendedPackages, ".java");
+        long scanMs = System.currentTimeMillis() - scanStart;
+        System.err.println("[atlas] scanned " + candidates.size() + " candidate file(s) in " + scanMs + "ms");
 
         List<Edge> allEdges = new ArrayList<>();
         List<UnparseableFile> unparseable = new ArrayList<>();
         List<String> ignored = new ArrayList<>();
 
+        long extractStart = System.currentTimeMillis();
+        int processed = 0;
         for (Path file : candidates) {
             for (MappingExtractor x : enabled) {
                 if (x.supports(ctx, file)) {
@@ -104,6 +109,13 @@ public final class Orchestrator {
                     ignored.addAll(r.ignoredByAnnotation());
                     break;
                 }
+            }
+            processed++;
+            if (processed % 25 == 0 || processed == candidates.size()) {
+                long elapsed = System.currentTimeMillis() - extractStart;
+                System.err.println(String.format(
+                        "[atlas] %d/%d files processed (%dms, %d edges so far)",
+                        processed, candidates.size(), elapsed, allEdges.size()));
             }
         }
         for (MappingExtractor x : enabled) {

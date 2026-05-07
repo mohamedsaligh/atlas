@@ -53,7 +53,7 @@ public final class PlainJavaExtractor implements MappingExtractor {
 
     @Override
     public ExtractorResult extract(ExtractorContext ctx, Path candidate) {
-        JavaParserHarness harness = new JavaParserHarness(ctx.sourceRoots(), ctx.classpath());
+        JavaParserHarness harness = JavaParserHarness.forContext(ctx.sourceRoots(), ctx.classpath());
         Optional<CompilationUnit> cuOpt = harness.parse(candidate);
         if (cuOpt.isEmpty()) {
             return ExtractorResult.builder()
