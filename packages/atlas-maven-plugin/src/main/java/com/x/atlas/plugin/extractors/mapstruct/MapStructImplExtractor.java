@@ -127,7 +127,7 @@ public final class MapStructImplExtractor implements MappingExtractor {
             this.mapperId = mapperFqn;
 
             Map<String, ParamBinding> bindings = bindParams(entry);
-            walkBody(entry.getBody().orElse(null), "", bindings);
+            walkBody(entry.getBody().orElse(null), "", bindings, entry);
         }
 
         private Map<String, ParamBinding> bindParams(MethodDeclaration method) {
@@ -141,13 +141,117 @@ public final class MapStructImplExtractor implements MappingExtractor {
         }
 
         private void walkBody(BlockStmt body, String pathPrefix, Map<String, ParamBinding> bindings) {
+            walkBody(body, pathPrefix, bindings, null);
+        }
+
+        private void walkBody(BlockStmt body, String pathPrefix, Map<String, ParamBinding> bindings,
+                              MethodDeclaration methodForParamFallback) {
             if (body == null) return;
-            String localTargetVar = findFirstNewLocal(body);
+            String targetVar = findFirstNewLocal(body);
+            if (targetVar == null && methodForParamFallback != null) {
+                String returnType = methodForParamFallback.getType().toString();
+                // Try locals of target type (any initialiser).
+                for (Statement st : body.getStatements()) {
+                    for (VariableDeclarationExpr v : st.findAll(VariableDeclarationExpr.class)) {
+                        for (var var : v.getVariables()) {
+                            String declared = var.getType().toString();
+                            if (declared.equals(returnType) || declared.endsWith("." + returnType)) {
+                                targetVar = var.getNameAsString();
+                                break;
+                            }
+                        }
+                        if (targetVar != null) break;
+                    }
+                    if (targetVar != null) break;
+                }
+                // Fall back to a parameter of target type.
+                if (targetVar == null) {
+                    for (Parameter p : methodForParamFallback.getParameters()) {
+                        String pt = p.getType().toString();
+                        if (pt.equals(returnType) || pt.endsWith("." + returnType)) {
+                            targetVar = p.getNameAsString();
+                            break;
+                        }
+                    }
+                }
+            }
             for (Statement st : body.getStatements()) {
+                final String tv = targetVar;
                 st.findAll(MethodCallExpr.class).forEach(call -> {
-                    if (!isSetterOnLocal(call, localTargetVar)) return;
-                    handleSetter(call, pathPrefix, bindings);
+                    if (isSetterOnLocal(call, tv)) {
+                        handleSetter(call, pathPrefix, bindings);
+                    } else if (tv != null && isHelperMutator(call, tv)) {
+                        handleEnrichment(call, pathPrefix, tv);
+                    }
                 });
+            }
+        }
+
+        private static boolean isHelperMutator(MethodCallExpr call, String targetVar) {
+            // Don't double-count: a setter on the target var is handled elsewhere.
+            if (call.getNameAsString().startsWith("set")
+                    && call.getScope().filter(NameExpr.class::isInstance)
+                            .map(s -> ((NameExpr) s).getNameAsString().equals(targetVar))
+                            .orElse(false)) {
+                return false;
+            }
+            for (Expression arg : call.getArguments()) {
+                if (isGetterChainRootedAt(arg, targetVar)) return true;
+            }
+            return false;
+        }
+
+        private static boolean isGetterChainRootedAt(Expression e, String targetVar) {
+            while (e instanceof MethodCallExpr m && m.getNameAsString().startsWith("get")) {
+                e = m.getScope().orElse(null);
+                if (e == null) return false;
+            }
+            return e instanceof NameExpr n && n.getNameAsString().equals(targetVar);
+        }
+
+        private static String pathFromGetterChain(Expression e) {
+            StringBuilder sb = new StringBuilder();
+            while (e instanceof MethodCallExpr m && m.getNameAsString().startsWith("get")) {
+                if (sb.length() > 0) sb.insert(0, ".");
+                sb.insert(0, getterToField(m.getNameAsString()));
+                e = m.getScope().orElse(null);
+            }
+            return sb.toString();
+        }
+
+        private void handleEnrichment(MethodCallExpr call, String pathPrefix, String targetVar) {
+            String helperFqn = extractStaticHelperFqn(call);
+            if (helperFqn == null) {
+                helperFqn = call.getScope().map(Object::toString).orElse("?") + "." + call.getNameAsString();
+            }
+            int line = call.getBegin().map(p -> p.line).orElse(0);
+            String relFile = relFile();
+            for (Expression arg : call.getArguments()) {
+                if (!isGetterChainRootedAt(arg, targetVar)) continue;
+                String pathFromArg = pathFromGetterChain(arg);
+                if (pathFromArg.isEmpty()) continue;
+                String fullPath = pathPrefix.isEmpty() ? pathFromArg : pathPrefix + "." + pathFromArg;
+                FieldRef target = new FieldRef(targetTypeRef.type(), fullPath, ctx.target().schemaFile(),
+                        lookupBusinessKey(ctx.target().schemaFile(), fullPath));
+                String edgeId = EdgeIdGenerator.edgeId(
+                        ctx.repoId(), ctx.pairId(), relFile, line, fullPath, "enrichment:" + helperFqn);
+                GitRef gitRef = new GitRef(
+                        git.repoUrl(), git.headSha(), relFile, line,
+                        null, git.blobShaFor(Path.of(relFile)));
+                Edge edge = Edge.builder()
+                        .edgeId(edgeId)
+                        .mapperId(mapperId)
+                        .mapperKind(ID)
+                        .kind(EdgeKind.ENRICHMENT)
+                        .source(null)
+                        .target(target)
+                        .expression(call.toString())
+                        .staticHelperFqn(helperFqn)
+                        .scope(scopeEngine.infer(Path.of(relFile)))
+                        .git(gitRef)
+                        .confidence(Confidence.LOW)
+                        .build();
+                rb.edge(edge);
             }
         }
 
@@ -312,14 +416,22 @@ public final class MapStructImplExtractor implements MappingExtractor {
                     || rhs instanceof DoubleLiteralExpr || rhs instanceof BooleanLiteralExpr
                     || rhs instanceof NullLiteralExpr) return null;
 
-            if (rhs instanceof MethodCallExpr call && call.getNameAsString().startsWith("get")) {
-                Expression scope = call.getScope().orElse(null);
-                if (scope == null) return null;
-                SourceMatch headMatch = extractSource(scope, bindings);
-                if (headMatch == null) return null;
-                String field = getterToField(call.getNameAsString());
-                String path = headMatch.path().isEmpty() ? field : headMatch.path() + "." + field;
-                return new SourceMatch(headMatch.binding(), path);
+            if (rhs instanceof MethodCallExpr call) {
+                if (call.getNameAsString().startsWith("get") && call.getScope().isPresent()) {
+                    SourceMatch headMatch = extractSource(call.getScope().get(), bindings);
+                    if (headMatch != null) {
+                        String field = getterToField(call.getNameAsString());
+                        String path = headMatch.path().isEmpty() ? field : headMatch.path() + "." + field;
+                        return new SourceMatch(headMatch.binding(), path);
+                    }
+                }
+                // Wrapper call (qualifier instance method, static util, expression):
+                // recurse into args to find a source-bound argument. First match wins.
+                for (Expression arg : call.getArguments()) {
+                    SourceMatch argMatch = extractSource(arg, bindings);
+                    if (argMatch != null) return argMatch;
+                }
+                return null;
             }
             if (rhs instanceof NameExpr name) {
                 ParamBinding b = bindings.get(name.getNameAsString());
@@ -332,6 +444,18 @@ public final class MapStructImplExtractor implements MappingExtractor {
                 String field = fa.getNameAsString();
                 String path = headMatch.path().isEmpty() ? field : headMatch.path() + "." + field;
                 return new SourceMatch(headMatch.binding(), path);
+            }
+            if (rhs instanceof ConditionalExpr cond) {
+                // For ternary, prefer the "then" branch's source.
+                SourceMatch thenMatch = extractSource(cond.getThenExpr(), bindings);
+                if (thenMatch != null) return thenMatch;
+                return extractSource(cond.getElseExpr(), bindings);
+            }
+            if (rhs instanceof EnclosedExpr enc) {
+                return extractSource(enc.getInner(), bindings);
+            }
+            if (rhs instanceof CastExpr cast) {
+                return extractSource(cast.getExpression(), bindings);
             }
             return null;
         }

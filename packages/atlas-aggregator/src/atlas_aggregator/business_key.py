@@ -37,6 +37,8 @@ def enumerate_fields(schema_file: Path, kind: str) -> dict[str, FieldAttrs]:
         return _enum_json_schema(schema_file)
     if kind == "xsd":
         return _enum_xsd(schema_file)
+    if kind == "java-class":
+        return _enum_java_class(schema_file)
     return {}
 
 
@@ -130,3 +132,204 @@ def _enum_xsd(file: Path) -> dict[str, FieldAttrs]:
         # in the path (e.g. MT103 wraps field_50K -> path "field_50K", not "MT103.field_50K").
         walk_element(top, "")
     return out
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# java-class: enumerate fields of a Java domain class tree.
+#
+# Walks the root .java file and recurses through:
+#   - inner static classes declared in the same file
+#   - field types whose simple class name matches another .java file in the
+#     same source root (typical for monorepos and sibling Maven modules)
+#
+# Leaf detection: a field whose declared type is a primitive, java.lang.*,
+# java.util.*, java.time.*, or any type that doesn't resolve to a Java class
+# in the source tree is treated as a leaf.
+#
+# Annotations honoured per field:
+#   @AtlasField(businessKey = "X")  → FieldAttrs.business_key
+#   @AtlasIgnore                    → FieldAttrs.ignored
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+_LEAF_TYPE_PREFIXES = (
+    "java.", "Boolean", "Byte", "Character", "Short", "Integer", "Long",
+    "Float", "Double", "String", "Object", "Number", "BigDecimal", "BigInteger",
+    "LocalDate", "LocalDateTime", "LocalTime", "Date", "Instant", "OffsetDateTime",
+    "ZonedDateTime", "Duration", "Period", "UUID",
+)
+_PRIMITIVE_TYPES = {
+    "boolean", "byte", "char", "short", "int", "long", "float", "double", "void",
+}
+
+_FIELD_DECL_RE = re.compile(
+    r'(?ms)'
+    r'((?:@\w+(?:\([^)]*\))?\s+)*)'                  # group 1: annotation block
+    r'(?:public|private|protected)\s+'               # mandatory visibility (excludes method internals)
+    r'(?:(?:static|final|volatile|transient)\s+)*'   # optional further modifiers
+    r'([A-Za-z_][\w.<>,\s\[\]?]*?)\s+'               # group 2: type
+    r'(\w+)\s*[;=]'                                  # group 3: field name + ; or =
+)
+_BK_ANNO_RE = re.compile(r'@AtlasField\s*\(\s*businessKey\s*=\s*"([^"]+)"')
+_IGNORE_ANNO_RE = re.compile(r'@AtlasIgnore\b')
+
+
+def _enum_java_class(file: Path) -> dict[str, FieldAttrs]:
+    out: dict[str, FieldAttrs] = {}
+    src_root = _find_java_source_root(file)
+    file_index = _index_java_files(src_root) if src_root else {file.stem: file}
+    try:
+        text = file.read_text(encoding="utf-8")
+    except UnicodeDecodeError:
+        return out
+    root_class = _root_class_name(text) or file.stem
+    body = _extract_class_block(text, root_class)
+    if body is None:
+        return out
+    _walk_java_class(body, file, "", file_index, out, set())
+    return out
+
+
+def _find_java_source_root(file: Path) -> Path | None:
+    p = file.parent
+    while p != p.parent:
+        if p.name == "java" and p.parent.name == "main" and p.parent.parent.name == "src":
+            return p
+        p = p.parent
+    return None
+
+
+def _index_java_files(root: Path) -> dict[str, Path]:
+    index: dict[str, Path] = {}
+    for f in root.rglob("*.java"):
+        if f.is_file():
+            index.setdefault(f.stem, f)
+    return index
+
+
+def _root_class_name(text: str) -> str | None:
+    m = re.search(
+        r'(?:public\s+|abstract\s+|final\s+)*class\s+(\w+)\b',
+        text,
+    )
+    return m.group(1) if m else None
+
+
+def _extract_class_block(text: str, class_name: str) -> str | None:
+    m = re.search(
+        r'(?:public\s+|private\s+|protected\s+|static\s+|final\s+|abstract\s+)*'
+        r'class\s+' + re.escape(class_name) + r'\b[^{]*\{',
+        text,
+    )
+    if not m:
+        return None
+    start = m.end()
+    depth = 1
+    i = start
+    while i < len(text) and depth > 0:
+        c = text[i]
+        if c == '{':
+            depth += 1
+        elif c == '}':
+            depth -= 1
+        i += 1
+    return text[start:i - 1] if depth == 0 else None
+
+
+def _strip_inner_class_blocks(body: str) -> str:
+    """Replace each inner class body's text with spaces (preserving offsets)."""
+    out_chars = list(body)
+    inner_re = re.compile(
+        r'(?:public\s+|private\s+|protected\s+|static\s+|final\s+|abstract\s+)*class\s+\w+\b[^{]*\{'
+    )
+    for m in inner_re.finditer(body):
+        start = m.end()
+        depth = 1
+        i = start
+        while i < len(body) and depth > 0:
+            c = body[i]
+            if c == '{':
+                depth += 1
+            elif c == '}':
+                depth -= 1
+            i += 1
+        for k in range(start, i - 1):
+            if out_chars[k] != '\n':
+                out_chars[k] = ' '
+    return ''.join(out_chars)
+
+
+def _is_leaf_type(type_name: str) -> bool:
+    base = type_name.strip().split("<")[0].strip()
+    if base in _PRIMITIVE_TYPES:
+        return True
+    if any(base.startswith(p) for p in _LEAF_TYPE_PREFIXES):
+        return True
+    if base.endswith("[]"):
+        return True
+    return False
+
+
+def _walk_java_class(
+    body: str,
+    file: Path,
+    prefix: str,
+    file_index: dict[str, Path],
+    out: dict[str, FieldAttrs],
+    seen: set[Path],
+) -> None:
+    shallow = _strip_inner_class_blocks(body)
+
+    for m in _FIELD_DECL_RE.finditer(shallow):
+        anno_block, type_name, field_name = m.group(1), m.group(2).strip(), m.group(3)
+        # Skip method declarations and other non-field matches by checking that
+        # what follows isn't a parameter list (handled by the regex's [;=] terminator,
+        # but be defensive).
+        if "(" in type_name:
+            continue
+        bk_m = _BK_ANNO_RE.search(anno_block) if anno_block else None
+        ignored = bool(_IGNORE_ANNO_RE.search(anno_block)) if anno_block else False
+
+        type_simple = type_name.split(".")[-1].split("<")[0].strip()
+        path = f"{prefix}.{field_name}" if prefix else field_name
+
+        if _is_leaf_type(type_name):
+            out[path] = FieldAttrs(
+                business_key=bk_m.group(1) if bk_m else None,
+                ignored=ignored,
+            )
+            continue
+
+        # Inner static class in the same file?
+        inner_body = _extract_class_block(body, type_simple)
+        if inner_body is not None:
+            if bk_m or ignored:
+                out[path] = FieldAttrs(
+                    business_key=bk_m.group(1) if bk_m else None,
+                    ignored=ignored,
+                )
+            _walk_java_class(inner_body, file, path, file_index, out, seen)
+            continue
+
+        sibling = file_index.get(type_simple)
+        if sibling and sibling != file and sibling not in seen:
+            seen.add(sibling)
+            try:
+                sibling_text = sibling.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                continue
+            sibling_block = _extract_class_block(sibling_text, type_simple)
+            if sibling_block is not None:
+                if bk_m or ignored:
+                    out[path] = FieldAttrs(
+                        business_key=bk_m.group(1) if bk_m else None,
+                        ignored=ignored,
+                    )
+                _walk_java_class(sibling_block, sibling, path, file_index, out, seen)
+                continue
+
+        # Unresolvable type — treat as leaf.
+        out[path] = FieldAttrs(
+            business_key=bk_m.group(1) if bk_m else None,
+            ignored=ignored,
+        )

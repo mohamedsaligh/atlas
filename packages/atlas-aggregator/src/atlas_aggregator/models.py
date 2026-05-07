@@ -77,7 +77,7 @@ class ManifestSchemaRef(BaseModel):
 
     name: str
     schemaFile: str
-    schemaKind: Literal["xsd", "json-schema", "proto", "fixedlen", "tagged"]
+    schemaKind: Literal["xsd", "json-schema", "proto", "fixedlen", "tagged", "java-class"]
 
 
 class ManifestGit(BaseModel):

@@ -86,7 +86,7 @@
       "properties": {
         "name":       { "type": "string" },
         "schemaFile": { "type": "string" },
-        "schemaKind": { "type": "string", "enum": ["xsd", "json-schema", "proto", "fixedlen", "tagged"] }
+        "schemaKind": { "type": "string", "enum": ["xsd", "json-schema", "proto", "fixedlen", "tagged", "java-class"] }
       }
     }
   }

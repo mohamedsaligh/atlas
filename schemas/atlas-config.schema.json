@@ -127,7 +127,7 @@
       "properties": {
         "name":        { "type": "string" },
         "schema_file": { "type": "string" },
-        "schema_kind": { "type": "string", "enum": ["xsd", "json-schema", "proto", "fixedlen", "tagged"] },
+        "schema_kind": { "type": "string", "enum": ["xsd", "json-schema", "proto", "fixedlen", "tagged", "java-class"] },
         "type_fqns":   {
           "type": "array",
           "items": { "type": "string", "minLength": 1 },
