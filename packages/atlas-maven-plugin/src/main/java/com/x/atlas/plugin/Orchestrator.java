@@ -14,9 +14,12 @@ import com.x.atlas.core.spi.MappingExtractor;
 import com.x.atlas.plugin.config.AtlasConfig;
 import com.x.atlas.plugin.io.PathScanner;
 import java.io.IOException;
+import java.nio.file.FileSystems;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 /**
@@ -26,13 +29,43 @@ import java.util.stream.Collectors;
  */
 public final class Orchestrator {
 
+    private static final long DEFAULT_FILE_TIMEOUT_MS = 60_000L;
+
     private final List<MappingExtractor> registry;
+    private final long fileTimeoutMs;
+    private final List<PathMatcher> skipMatchers;
+    private final boolean verbose;
 
     public Orchestrator() {
+        this(parseTimeoutMs(), parseSkipGlobs(), parseVerbose());
+    }
+
+    public Orchestrator(long fileTimeoutMs, List<String> skipGlobs, boolean verbose) {
         this.registry = ServiceLoader.load(MappingExtractor.class).stream()
                 .map(ServiceLoader.Provider::get)
                 .sorted(Comparator.comparing(MappingExtractor::id))
                 .toList();
+        this.fileTimeoutMs = fileTimeoutMs;
+        this.skipMatchers = skipGlobs.stream()
+                .map(g -> FileSystems.getDefault().getPathMatcher("glob:" + g))
+                .toList();
+        this.verbose = verbose;
+    }
+
+    private static long parseTimeoutMs() {
+        String v = System.getProperty("atlas.fileTimeoutMs");
+        if (v == null || v.isBlank()) return DEFAULT_FILE_TIMEOUT_MS;
+        try { return Long.parseLong(v); } catch (NumberFormatException e) { return DEFAULT_FILE_TIMEOUT_MS; }
+    }
+
+    private static List<String> parseSkipGlobs() {
+        String v = System.getProperty("atlas.skipFiles");
+        if (v == null || v.isBlank()) return List.of();
+        return Arrays.asList(v.split(","));
+    }
+
+    private static boolean parseVerbose() {
+        return Boolean.parseBoolean(System.getProperty("atlas.verbose", "false"));
     }
 
     public RunResult runPair(
@@ -100,23 +133,70 @@ public final class Orchestrator {
 
         long extractStart = System.currentTimeMillis();
         int processed = 0;
-        for (Path file : candidates) {
-            for (MappingExtractor x : enabled) {
-                if (x.supports(ctx, file)) {
-                    ExtractorResult r = x.extract(ctx, file);
+        ExecutorService exec = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "atlas-extract-worker");
+            t.setDaemon(true);
+            return t;
+        });
+        try {
+            for (Path file : candidates) {
+                String relFile;
+                try {
+                    relFile = repoRoot.toAbsolutePath()
+                            .relativize(file.toAbsolutePath()).toString().replace('\\', '/');
+                } catch (Exception e) {
+                    relFile = file.toString();
+                }
+
+                if (matchesSkip(relFile)) {
+                    if (verbose) System.err.println("[atlas] skip (atlas.skipFiles): " + relFile);
+                    processed++;
+                    continue;
+                }
+
+                if (verbose) System.err.println("[atlas] -> " + relFile);
+
+                final Path candidate = file;
+                final ExtractorContext ctxFinal = ctx;
+                Future<ExtractorResult> future = exec.submit(() -> {
+                    for (MappingExtractor x : enabled) {
+                        if (x.supports(ctxFinal, candidate)) {
+                            return x.extract(ctxFinal, candidate);
+                        }
+                    }
+                    return ExtractorResult.empty();
+                });
+                try {
+                    ExtractorResult r = future.get(fileTimeoutMs, TimeUnit.MILLISECONDS);
                     allEdges.addAll(r.edges());
                     unparseable.addAll(r.unparseable());
                     ignored.addAll(r.ignoredByAnnotation());
-                    break;
+                } catch (TimeoutException te) {
+                    future.cancel(true);
+                    System.err.println("[atlas] TIMEOUT (" + fileTimeoutMs + "ms): " + relFile
+                            + "  — added to unparseable, continuing");
+                    unparseable.add(new UnparseableFile(relFile, null,
+                            "extractor timeout after " + fileTimeoutMs + "ms"));
+                } catch (ExecutionException ee) {
+                    System.err.println("[atlas] error on " + relFile + ": "
+                            + (ee.getCause() == null ? ee.getMessage() : ee.getCause().getMessage()));
+                    unparseable.add(new UnparseableFile(relFile, null,
+                            "extractor threw: " + ee.getMessage()));
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    throw new IOException("interrupted", ie);
+                }
+
+                processed++;
+                if (processed % 25 == 0 || processed == candidates.size()) {
+                    long elapsed = System.currentTimeMillis() - extractStart;
+                    System.err.println(String.format(
+                            "[atlas] %d/%d files processed (%dms, %d edges so far)",
+                            processed, candidates.size(), elapsed, allEdges.size()));
                 }
             }
-            processed++;
-            if (processed % 25 == 0 || processed == candidates.size()) {
-                long elapsed = System.currentTimeMillis() - extractStart;
-                System.err.println(String.format(
-                        "[atlas] %d/%d files processed (%dms, %d edges so far)",
-                        processed, candidates.size(), elapsed, allEdges.size()));
-            }
+        } finally {
+            exec.shutdownNow();
         }
         for (MappingExtractor x : enabled) {
             ExtractorResult r = x.extractAll(ctx);
@@ -332,6 +412,15 @@ public final class Orchestrator {
 
     private static String sanitize(String s) {
         return s.replaceAll("[^A-Za-z0-9_-]+", "_").toLowerCase(Locale.ROOT);
+    }
+
+    private boolean matchesSkip(String relFile) {
+        if (skipMatchers.isEmpty()) return false;
+        Path p = Path.of(relFile);
+        for (PathMatcher m : skipMatchers) {
+            if (m.matches(p)) return true;
+        }
+        return false;
     }
 
     private record GroupKey(String sourceSchemaFile, String targetSchemaFile) {}
