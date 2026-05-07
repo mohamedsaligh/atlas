@@ -978,24 +978,79 @@ def _glob_to_regex(glob: str) -> re.Pattern[str]:
 
 
 def _infer_scope(rel: str, _globs: list[str], rules: list[Any]) -> dict[str, Any]:
+    """Apply scope_rules in order; first match wins.
+
+    Each rule is either:
+      - glob-based: matches the relative file path. Optional `capture` lists
+        named placeholders ({country}, {clearing}, ...) in the glob; their
+        captured values populate scope. `scope` literal is merged on top.
+      - filename_pattern-based: a Python regex with named groups applied to
+        the simple file name (basename). Named groups become scope entries.
+    """
     rel_unix = rel.replace("\\", "/")
+    basename = rel_unix.rsplit("/", 1)[-1]
     out: dict[str, Any] = {}
+
     for r in rules:
-        pat = _glob_to_regex(r.glob)
-        if pat.match(rel_unix):
-            if r.scope:
-                out.update(r.scope)
-            return out
-    # Capture-based fallback: extract {country}, {clearing}, etc. from the path.
-    m = re.search(r"/mapper/(?P<country>[a-z]{2,3})(/(?P<clearing>[a-z0-9_]+))?/", rel_unix.lower())
-    if m:
-        if m.group("country"):
-            out["country"] = m.group("country").upper()
-        if m.group("clearing"):
-            out["clearing"] = m.group("clearing").upper()
-    if "/mapper/common/" in rel_unix.lower():
-        out["common"] = True
+        scope_payload = dict(r.scope or {})
+
+        if getattr(r, "glob", None):
+            regex, group_names = _glob_to_regex_with_groups(r.glob)
+            m = regex.match(rel_unix)
+            if m:
+                for name in group_names:
+                    val = m.group(name)
+                    if val:
+                        scope_payload.setdefault(name, _normalise(val))
+                out.update(scope_payload)
+                return out
+
+        if getattr(r, "filename_pattern", None):
+            pat = re.compile(r.filename_pattern)
+            m = pat.match(basename)
+            if m:
+                for name, val in m.groupdict().items():
+                    if val:
+                        scope_payload.setdefault(name, _normalise(val))
+                out.update(scope_payload)
+                return out
+
     return out
+
+
+def _normalise(s: str) -> str:
+    """sg_fast → SG_FAST. ar → AR. Coelsa → COELSA."""
+    return re.sub(r"[^A-Za-z0-9]+", "_", s).strip("_").upper()
+
+
+def _glob_to_regex_with_groups(glob: str) -> tuple[re.Pattern[str], list[str]]:
+    """Convert {placeholder} to (?P<placeholder>[^/]+); ** → .*; * → [^/]*."""
+    parts: list[str] = []
+    groups: list[str] = []
+    i = 0
+    while i < len(glob):
+        c = glob[i]
+        if c == "{":
+            end = glob.index("}", i)
+            name = glob[i + 1 : end]
+            groups.append(name)
+            parts.append(f"(?P<{name}>[^/]+)")
+            i = end + 1
+        elif c == "*" and i + 1 < len(glob) and glob[i + 1] == "*":
+            parts.append(r".*")
+            i += 2
+            if i < len(glob) and glob[i] == "/":
+                i += 1
+        elif c == "*":
+            parts.append(r"[^/]*")
+            i += 1
+        elif c in r".^$+|()[]\\":
+            parts.append(re.escape(c))
+            i += 1
+        else:
+            parts.append(c)
+            i += 1
+    return re.compile("^" + "".join(parts) + "$"), groups
 
 
 def _git_sha(repo_path: str) -> str:

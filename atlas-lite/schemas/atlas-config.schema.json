@@ -88,10 +88,15 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": ["glob"],
+            "anyOf": [
+              { "required": ["glob"] },
+              { "required": ["filename_pattern"] }
+            ],
             "properties": {
-              "glob":  { "type": "string" },
-              "scope": { "type": "object", "additionalProperties": true }
+              "glob":             { "type": "string" },
+              "filename_pattern": { "type": "string", "description": "Python regex with named groups (?P<country>...) (?P<clearing>...) etc. against the file's simple class name + .java" },
+              "scope":            { "type": "object", "additionalProperties": true },
+              "capture":          { "type": "array", "items": { "type": "string" } }
             }
           }
         }

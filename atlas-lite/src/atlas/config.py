@@ -33,8 +33,10 @@ class Repo(BaseModel):
 
 class ScopeRule(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
-    glob: str
+    glob: str | None = None
+    filename_pattern: str | None = None
     scope: dict[str, Any] | None = None
+    capture: list[str] | None = None
 
 
 class Pair(BaseModel):
