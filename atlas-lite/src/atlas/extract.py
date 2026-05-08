@@ -114,6 +114,7 @@ class Edge:
     git: GitRef
     scope: dict[str, Any] = field(default_factory=dict)
     trail: tuple[Resolution, ...] = ()
+    entry_point_id: str | None = None
 
     def edge_id(self, repo_id: str) -> str:
         h = hashlib.sha1(
@@ -135,9 +136,32 @@ class MapperBlock:
 
 
 @dataclass
+class EntryPoint:
+    """A top-level transformation method — a public method that takes one or
+    more source schemas and returns a target schema. The unit a Business
+    Analyst reasons about; pivots Markdown, coverage, impact analysis, and the
+    UI/graph onto methods rather than classes or files.
+    """
+    id: str
+    pair_id: str
+    repo_id: str
+    class_fqn: str
+    method_name: str
+    method_signature: str
+    source_schema_ids: list[str]
+    target_schema_id: str
+    file: str
+    line: int
+    sha: str
+    browse_url: str
+    scope: dict[str, Any]
+
+
+@dataclass
 class ExtractResult:
     edges: list[Edge] = field(default_factory=list)
     mappers: list[MapperBlock] = field(default_factory=list)
+    entry_points: list[EntryPoint] = field(default_factory=list)
     unparseable: list[dict[str, str]] = field(default_factory=list)
     files_scanned: int = 0
 
@@ -355,19 +379,52 @@ class FileWalker:
         # Entry methods: @Override annotated, OR public top-level (in non-MapStruct
         # mappers) that constructs a fresh target. Helpers (non-@Override) are only
         # walked via recursion from a setter.
-        edges_before = len(result.edges)
+        class_edges_before = len(result.edges)
         for name, m in methods.items():
             if kind == "mapstruct-impl" and not _has_override(m, text):
                 continue  # helpers walked only via recursion
             params = self._parse_params(m, text, imports)
             if not params and not _has_target_var(m, text, imports):
                 continue
+
+            method_edges_before = len(result.edges)
+            return_type_node = _child_by_field(m, "type")
+            return_type = _text(return_type_node, text) if return_type_node else ""
+
             self._walk_method(
                 m, text, class_fqn, name, params, methods, "", imports, result, kind
             )
+
+            # Assemble an EntryPoint iff this method actually emitted edges.
+            # Tag every newly-emitted edge with the entry-point id.
+            if len(result.edges) > method_edges_before:
+                target_fqn_local = imports.get(return_type, return_type)
+                ep_id = self._entry_point_id(class_fqn, name, params, return_type)
+                for edge in result.edges[method_edges_before:]:
+                    edge.entry_point_id = ep_id
+                method_line = m.start_point[0] + 1
+                source_schema_ids = sorted({
+                    p.schema_id for p in params.values() if p.schema_id
+                })
+                result.entry_points.append(EntryPoint(
+                    id=ep_id,
+                    pair_id=self.pair.id,
+                    repo_id=self.repo.id,
+                    class_fqn=class_fqn,
+                    method_name=name,
+                    method_signature=_method_signature(m, text),
+                    source_schema_ids=source_schema_ids,
+                    target_schema_id=self._schema_id_for_target(target_fqn_local),
+                    file=self.rel,
+                    line=method_line,
+                    sha=self.sha,
+                    browse_url=self._browse_url(method_line),
+                    scope=self.scope,
+                ))
+
         # Only record the mapper if it actually emitted edges (drops phantom
         # interface entries that have no body — they're not mappers, just signatures).
-        if len(result.edges) > edges_before:
+        if len(result.edges) > class_edges_before:
             browse_url = self._browse_url(0)
             result.mappers.append(MapperBlock(
                 fqn=class_fqn,
@@ -614,6 +671,22 @@ class FileWalker:
         ref = m.get(fqn) or (self.default_source if source else self.default_target)
         return Path(ref.file).name
 
+    def _schema_id_for_target(self, target_fqn: str) -> str:
+        ref = self.fqn_to_target.get(target_fqn, self.default_target)
+        return Path(ref.file).name
+
+    def _entry_point_id(
+        self,
+        class_fqn: str,
+        method_name: str,
+        params: dict[str, ParamBinding],
+        return_type: str,
+    ) -> str:
+        param_sig = ",".join(p.type_fqn.split(".")[-1] for p in params.values())
+        raw = f"{self.repo.id}|{self.pair.id}|{class_fqn}#{method_name}({param_sig})->{return_type}"
+        h = hashlib.sha1(raw.encode()).hexdigest()[:12]
+        return f"{self.repo.id}.{self.pair.id}.ep_{h}"
+
     def _field_ref(self, type_fqn: str, path: str, default_ref: SchemaRef) -> FieldRef:
         ref = self.fqn_to_target.get(type_fqn, default_ref)
         schema_id = Path(ref.file).name
@@ -704,6 +777,16 @@ def _first_arg(arguments: tree_sitter.Node) -> tree_sitter.Node | None:
         if c.is_named and c.type not in (",", "(", ")"):
             return c
     return None
+
+
+def _method_signature(method: tree_sitter.Node, text: bytes) -> str:
+    """Slice from method start to body's open brace — captures modifiers,
+    return type, name, parameters, and any throws clause. Single-line form."""
+    body = _child_by_field(method, "body")
+    if body is None:
+        return _text(method, text).strip().rstrip(";")
+    sig = text[method.start_byte:body.start_byte].decode("utf-8", errors="replace")
+    return " ".join(sig.split()).strip()
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -1191,10 +1274,19 @@ def persist(
                     "INSERT INTO field_fts (field_id, schema, path, business_key, type) VALUES (?, ?, ?, ?, ?)",
                     (fid, schema_id, path, attrs.business_key or "", attrs.type_hint or ""),
                 )
-    # mappers + edges + coverage
+    # mappers + entry_points + edges + helpers + coverage
     seen_field_ids: set[str] = set()
+    seen_helper_fqns: set[str] = set()
     edge_total = 0
     mapper_total = 0
+    entry_point_total = 0
+    # Pre-aggregate edge counts per entry-point id across all results.
+    edges_per_ep: dict[str, int] = {}
+    for (_repo_id, _pair_id), res in results.items():
+        for e in res.edges:
+            if e.entry_point_id:
+                edges_per_ep[e.entry_point_id] = edges_per_ep.get(e.entry_point_id, 0) + 1
+
     for (repo_id, pair_id), res in results.items():
         for m in res.mappers:
             cur.execute(
@@ -1209,6 +1301,26 @@ def persist(
                 (m.fqn, m.fqn, json.dumps(m.scope, sort_keys=True)),
             )
             mapper_total += 1
+
+        for ep in res.entry_points:
+            cur.execute(
+                """INSERT OR REPLACE INTO entry_point
+                   (id, pair_id, repo_id, class_fqn, method_name, method_signature,
+                    source_schema_ids, target_schema_id, file, line, sha, browse_url,
+                    scope_common, scope_country, scope_clearing, scope_product,
+                    scope_field_group, edge_count, coverage_percent)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (ep.id, ep.pair_id, ep.repo_id, ep.class_fqn, ep.method_name,
+                 ep.method_signature,
+                 json.dumps(ep.source_schema_ids, sort_keys=True),
+                 ep.target_schema_id, ep.file, ep.line, ep.sha, ep.browse_url,
+                 1 if ep.scope.get("common") else 0,
+                 ep.scope.get("country"), ep.scope.get("clearing"),
+                 ep.scope.get("product"), ep.scope.get("field_group"),
+                 edges_per_ep.get(ep.id, 0), None),
+            )
+            entry_point_total += 1
+
         for e in res.edges:
             tgt_fid = f"{e.target.schema_id}#{e.target.path}"
             if tgt_fid not in seen_field_ids:
@@ -1226,11 +1338,26 @@ def persist(
                         (src_fid, e.source.schema_id, e.source.path, e.source.business_key, None),
                     )
                     seen_field_ids.add(src_fid)
+
+            # Populate static_helper_fqn from the trail when the resolver walked
+            # into a helper (qualifier or static_call). Lets BAs filter edges by
+            # helper FQN directly without joining edge_resolution.
+            static_helper_fqn = e.static_helper_fqn
+            if not static_helper_fqn:
+                for step in reversed(e.trail):
+                    if step.kind in ("qualifier", "static_call", "intra_class") and step.helper_fqn:
+                        static_helper_fqn = step.helper_fqn
+                        break
+
             eid = e.edge_id(repo_id)
             cur.execute(
-                "INSERT OR REPLACE INTO edge VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (eid, e.pair_id, e.mapper_id, src_fid, tgt_fid,
-                 e.kind, e.expression, e.static_helper_fqn,
+                """INSERT OR REPLACE INTO edge
+                   (id, pair_id, mapper_id, entry_point_id, source_field_id, target_field_id,
+                    kind, expression, static_helper_fqn, format_spec_json,
+                    file, line, sha, browse_url)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (eid, e.pair_id, e.mapper_id, e.entry_point_id, src_fid, tgt_fid,
+                 e.kind, e.expression, static_helper_fqn,
                  json.dumps(e.format_spec, sort_keys=True) if e.format_spec else None,
                  e.git.file, e.git.line, e.git.sha, e.git.browse_url),
             )
@@ -1240,6 +1367,23 @@ def persist(
                     "INSERT INTO edge_resolution VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (eid, seq, step.kind, step.file, step.line, step.snippet, step.helper_fqn),
                 )
+                # Dedupe helper bodies into the helper table — first non-null wins.
+                if (step.helper_fqn and step.helper_body
+                        and step.helper_fqn not in seen_helper_fqns):
+                    body_sha = hashlib.sha256(step.helper_body.encode("utf-8")).hexdigest()
+                    cur.execute(
+                        """INSERT OR REPLACE INTO helper
+                           (fqn, file, start_line, end_line, signature, body, body_sha256)
+                           VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                        (step.helper_fqn,
+                         step.helper_file or "",
+                         step.helper_start_line or 0,
+                         step.helper_end_line or 0,
+                         step.helper_signature or "",
+                         step.helper_body,
+                         body_sha),
+                    )
+                    seen_helper_fqns.add(step.helper_fqn)
             edge_total += 1
         cur.execute(
             "INSERT OR REPLACE INTO coverage VALUES (?, ?, ?, ?, ?, ?, ?)",

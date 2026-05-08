@@ -62,10 +62,42 @@ CREATE INDEX IF NOT EXISTS idx_mapper_pair      ON mapper(pair_id);
 CREATE INDEX IF NOT EXISTS idx_mapper_country   ON mapper(scope_country);
 CREATE INDEX IF NOT EXISTS idx_mapper_clearing  ON mapper(scope_clearing);
 
+-- A transformation entry point: a top-level public method that takes one or
+-- more source schemas and returns a target schema. This is the unit a
+-- Business Analyst reasons about — Markdown, coverage, impact analysis, and
+-- the future UI/graph all pivot around entry points, not classes or files.
+CREATE TABLE IF NOT EXISTS entry_point (
+    id                TEXT PRIMARY KEY,
+    pair_id           TEXT NOT NULL,
+    repo_id           TEXT NOT NULL,
+    class_fqn         TEXT NOT NULL,
+    method_name       TEXT NOT NULL,
+    method_signature  TEXT NOT NULL,        -- full Java signature line
+    source_schema_ids TEXT NOT NULL,        -- JSON array
+    target_schema_id  TEXT NOT NULL,
+    file              TEXT NOT NULL,
+    line              INTEGER NOT NULL,
+    sha               TEXT NOT NULL,
+    browse_url        TEXT NOT NULL,
+    scope_common      INTEGER NOT NULL DEFAULT 0,
+    scope_country     TEXT,
+    scope_clearing    TEXT,
+    scope_product     TEXT,
+    scope_field_group TEXT,
+    edge_count        INTEGER NOT NULL DEFAULT 0,
+    coverage_percent  REAL
+);
+CREATE INDEX IF NOT EXISTS idx_entry_point_pair      ON entry_point(pair_id);
+CREATE INDEX IF NOT EXISTS idx_entry_point_class     ON entry_point(class_fqn);
+CREATE INDEX IF NOT EXISTS idx_entry_point_country   ON entry_point(scope_country);
+CREATE INDEX IF NOT EXISTS idx_entry_point_clearing  ON entry_point(scope_clearing);
+CREATE INDEX IF NOT EXISTS idx_entry_point_product   ON entry_point(scope_product);
+
 CREATE TABLE IF NOT EXISTS edge (
     id                TEXT PRIMARY KEY,
     pair_id           TEXT NOT NULL,
     mapper_id         TEXT NOT NULL,
+    entry_point_id    TEXT,
     source_field_id   TEXT,
     target_field_id   TEXT NOT NULL,
     kind              TEXT NOT NULL,
@@ -77,10 +109,12 @@ CREATE TABLE IF NOT EXISTS edge (
     sha               TEXT NOT NULL,
     browse_url        TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_edge_source ON edge(source_field_id);
-CREATE INDEX IF NOT EXISTS idx_edge_target ON edge(target_field_id);
-CREATE INDEX IF NOT EXISTS idx_edge_mapper ON edge(mapper_id);
-CREATE INDEX IF NOT EXISTS idx_edge_pair   ON edge(pair_id);
+CREATE INDEX IF NOT EXISTS idx_edge_source       ON edge(source_field_id);
+CREATE INDEX IF NOT EXISTS idx_edge_target       ON edge(target_field_id);
+CREATE INDEX IF NOT EXISTS idx_edge_mapper       ON edge(mapper_id);
+CREATE INDEX IF NOT EXISTS idx_edge_pair         ON edge(pair_id);
+CREATE INDEX IF NOT EXISTS idx_edge_entry_point  ON edge(entry_point_id);
+CREATE INDEX IF NOT EXISTS idx_edge_helper       ON edge(static_helper_fqn);
 
 CREATE TABLE IF NOT EXISTS test (
     id              TEXT PRIMARY KEY,
@@ -111,6 +145,20 @@ CREATE TABLE IF NOT EXISTS edge_resolution (
     PRIMARY KEY (edge_id, seq)
 );
 CREATE INDEX IF NOT EXISTS idx_edge_resolution_helper ON edge_resolution(helper_fqn);
+
+-- Helper method bodies, deduplicated by FQN. Captured during extraction the
+-- first time each helper is walked. Markdown render inlines `body` verbatim
+-- under each qualifier/static_call edge so a Business Analyst sees the full
+-- resolution logic, not just the call expression.
+CREATE TABLE IF NOT EXISTS helper (
+    fqn         TEXT PRIMARY KEY,
+    file        TEXT NOT NULL,
+    start_line  INTEGER NOT NULL,
+    end_line    INTEGER NOT NULL,
+    signature   TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    body_sha256 TEXT NOT NULL
+);
 
 CREATE TABLE IF NOT EXISTS coverage (
     repo_id           TEXT NOT NULL,

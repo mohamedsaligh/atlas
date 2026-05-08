@@ -52,6 +52,15 @@ class Resolution:
     line: int
     snippet: str
     helper_fqn: str | None = None
+    # Helper body capture (populated only on qualifier / static_call / intra_class
+    # steps — the steps that actually walked into a helper method body). The body
+    # is kept on the Resolution so persist() can dedupe it into the `helper`
+    # table by FQN. Markdown render then inlines this verbatim under each edge.
+    helper_file: str | None = None
+    helper_start_line: int | None = None
+    helper_end_line: int | None = None
+    helper_signature: str | None = None
+    helper_body: str | None = None
 
 
 @dataclass(frozen=True)
@@ -413,6 +422,27 @@ def _walk_helper_method(
     if body is None:
         return None
 
+    # Capture helper details once; reused on whichever step succeeds. Needed by
+    # persist() to populate the `helper` table (BA-grade Markdown render).
+    helper_signature = _helper_signature(helper, helper_indexed.bytes)
+    helper_body_text = _text(helper, helper_indexed.bytes)
+    helper_start_line = helper.start_point[0] + 1
+    helper_end_line = helper.end_point[0] + 1
+
+    def _step() -> Resolution:
+        return Resolution(
+            kind=kind,
+            file=caller_file_rel,
+            line=call_node.start_point[0] + 1,
+            snippet=_text(call_node, caller_file_bytes),
+            helper_fqn=helper_fqn,
+            helper_file=helper_file,
+            helper_start_line=helper_start_line,
+            helper_end_line=helper_end_line,
+            helper_signature=helper_signature,
+            helper_body=helper_body_text,
+        )
+
     # Collect helper's own locals — they're in scope inside the helper body.
     helper_locals = collect_locals(body)
 
@@ -422,14 +452,7 @@ def _walk_helper_method(
             if c.is_named:
                 inner = _resolve(c, helper_indexed.bytes, helper_file, new_bindings, index, cfg, depth + 1, visited, helper_locals)
                 if inner is not None:
-                    step = Resolution(
-                        kind=kind,
-                        file=caller_file_rel,
-                        line=call_node.start_point[0] + 1,
-                        snippet=_text(call_node, caller_file_bytes),
-                        helper_fqn=helper_fqn,
-                    )
-                    return inner.with_step(step)
+                    return inner.with_step(_step())
                 break  # only inspect the first named child of the return statement
 
     # 2. If no return — try the first setter chain on a target var inside the helper.
@@ -446,16 +469,22 @@ def _walk_helper_method(
             continue
         inner = _resolve(first, helper_indexed.bytes, helper_file, new_bindings, index, cfg, depth + 1, visited, helper_locals)
         if inner is not None:
-            step = Resolution(
-                kind=kind,
-                file=caller_file_rel,
-                line=call_node.start_point[0] + 1,
-                snippet=_text(call_node, caller_file_bytes),
-                helper_fqn=helper_fqn,
-            )
-            return inner.with_step(step)
+            return inner.with_step(_step())
 
     return None
+
+
+def _helper_signature(method: tree_sitter.Node, file_bytes: bytes) -> str:
+    """Slice the Java text from the method's start to its body's open brace.
+
+    Captures modifiers, return type, name, parameter list, throws clause —
+    everything a BA needs to read to judge what the helper does.
+    """
+    body = method.child_by_field_name("body")
+    if body is None:
+        return _text(method, file_bytes).strip().rstrip(";")
+    end = body.start_byte
+    return file_bytes[method.start_byte:end].decode("utf-8", errors="replace").strip()
 
 
 def _alias_caller_bindings(
