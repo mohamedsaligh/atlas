@@ -396,12 +396,23 @@ def _load_helpers_for_ep(
 
 
 def _entry_point_filename(ep: dict[str, Any]) -> str:
-    """Stable, navigable filename: `{ClassSimple}.{method}.{shorthash}.md`.
-    Short hash disambiguates overloads without leaking package coords."""
+    """Stable, navigable filename: ``{ClassSimple}.{method}.{shorthash}.md``.
+
+    MapStruct generates method names as long as 100+ chars on big property
+    graphs (``map_txInfoOriginator...CommonApiClearingSystemId``). Combined
+    with deep ``services/{repo}/{pair}/entry-points/`` directories that
+    drives the absolute path past Windows ``MAX_PATH`` (260 chars). We cap
+    the visible prefix at 80 chars; the 12-char content-addressed suffix
+    keeps uniqueness intact, and the human-readable name lives in the
+    page's frontmatter and title.
+    """
     class_simple = ep["class_fqn"].rsplit(".", 1)[-1]
-    short = ep["id"].rsplit("_", 1)[-1][:8]
     safe_method = ep["method_name"].replace("/", "_")
-    return f"{class_simple}.{safe_method}.{short}.md"
+    short = ep["id"].rsplit("_", 1)[-1][:12]
+    prefix = f"{class_simple}.{safe_method}"
+    if len(prefix) > 80:
+        prefix = prefix[:79] + "~"
+    return f"{prefix}.{short}.md"
 
 
 def _group_index(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
