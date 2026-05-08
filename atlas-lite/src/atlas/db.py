@@ -85,7 +85,11 @@ CREATE TABLE IF NOT EXISTS entry_point (
     scope_product     TEXT,
     scope_field_group TEXT,
     edge_count        INTEGER NOT NULL DEFAULT 0,
-    coverage_percent  REAL
+    -- Fraction of this entry point's edges that landed on a real source
+    -- schema path (source_field_id IS NOT NULL). NOT a "% of the target
+    -- schema covered by this method" — that number is misleading for
+    -- narrow-scope mappers and lives at the pair level on `coverage`.
+    resolution_percent REAL
 );
 CREATE INDEX IF NOT EXISTS idx_entry_point_pair      ON entry_point(pair_id);
 CREATE INDEX IF NOT EXISTS idx_entry_point_class     ON entry_point(class_fqn);
@@ -161,13 +165,15 @@ CREATE TABLE IF NOT EXISTS helper (
 );
 
 CREATE TABLE IF NOT EXISTS coverage (
-    repo_id           TEXT NOT NULL,
-    pair_id           TEXT NOT NULL,
-    files_scanned     INTEGER NOT NULL,
-    mappers_detected  INTEGER NOT NULL,
-    edges_emitted     INTEGER NOT NULL,
-    unparseable_json  TEXT NOT NULL,
-    unmatched_json    TEXT NOT NULL DEFAULT '[]',
+    repo_id            TEXT NOT NULL,
+    pair_id            TEXT NOT NULL,
+    files_scanned      INTEGER NOT NULL,
+    mappers_detected   INTEGER NOT NULL,
+    edges_emitted      INTEGER NOT NULL,
+    unparseable_json   TEXT NOT NULL,
+    unmatched_json     TEXT NOT NULL DEFAULT '[]',
+    target_field_count INTEGER,
+    coverage_percent   REAL,
     PRIMARY KEY (repo_id, pair_id)
 );
 
@@ -189,7 +195,35 @@ def open_db(path: Path | str) -> sqlite3.Connection:
 
 def init_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(SCHEMA_SQL)
+    _migrate(conn)
     conn.commit()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Idempotent column additions for incremental schema evolution.
+
+    ``init_schema`` runs ``CREATE TABLE IF NOT EXISTS`` which is a no-op on
+    existing tables, so columns added in later releases never appear on
+    pre-existing DBs. Probe ``PRAGMA table_info`` and ``ALTER TABLE`` only
+    the missing columns. Cheaper and safer than asking users to run
+    ``--full`` after every schema bump.
+    """
+    additions: list[tuple[str, str, str]] = [
+        ("coverage",    "target_field_count", "INTEGER"),
+        ("coverage",    "coverage_percent",   "REAL"),
+        ("entry_point", "resolution_percent", "REAL"),
+    ]
+    for table, column, typ in additions:
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {typ}")
+    # Rename the deprecated `entry_point.coverage_percent` if it still
+    # exists from an earlier session. The column was renamed for
+    # semantic clarity (the per-EP number is resolution-completeness,
+    # not target-schema coverage). Safe on SQLite ≥ 3.25.
+    ep_cols = {r[1] for r in conn.execute("PRAGMA table_info(entry_point)")}
+    if "coverage_percent" in ep_cols and "resolution_percent" in ep_cols:
+        conn.execute("ALTER TABLE entry_point DROP COLUMN coverage_percent")
 
 
 def reset(conn: sqlite3.Connection) -> None:

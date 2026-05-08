@@ -78,6 +78,7 @@ scope:
 sources: {{ ep.source_schema_ids | tojson }}
 target: {{ ep.target_schema_id }}
 edge_count: {{ ep.edge_count }}
+resolution_percent: {% if ep.resolution_percent is none %}null{% else %}{{ ep.resolution_percent }}{% endif %}
 ---
 
 # {{ ep.class_fqn.split('.')[-1] }}.{{ ep.method_name }}
@@ -152,10 +153,10 @@ field-level edges and full helper-body logic.
 {% for group in groups %}
 ## {{ group.country }} · {{ group.clearing }} · {{ group.product }}
 
-| class | method | sources → target | edges | source |
-|---|---|---|---|---|
+| class | method | sources → target | edges | resolution % | source |
+|---|---|---|---|---|---|
 {% for ep in group.entry_points %}
-| `{{ ep.class_short }}` | [`{{ ep.method_name }}`]({{ ep.rel_path }}) | `{{ ep.sources_short }}` → `{{ ep.target_schema_id }}` | {{ ep.edge_count }} | [L{{ ep.line }}]({{ ep.browse_url or '#' }}) |
+| `{{ ep.class_short }}` | [`{{ ep.method_name }}`]({{ ep.rel_path }}) | `{{ ep.sources_short }}` → `{{ ep.target_schema_id }}` | {{ ep.edge_count }} | {% if ep.resolution_percent is none %}—{% else %}{{ '%.2f' | format(ep.resolution_percent) }}{% endif %} | [L{{ ep.line }}]({{ ep.browse_url or '#' }}) |
 {% endfor %}
 
 {% endfor %}
@@ -258,7 +259,7 @@ def _render_entry_points(
         """SELECT id, pair_id, repo_id, class_fqn, method_name, method_signature,
                   source_schema_ids, target_schema_id, file, line, sha, browse_url,
                   scope_common, scope_country, scope_clearing, scope_product,
-                  scope_field_group, edge_count
+                  scope_field_group, edge_count, resolution_percent
            FROM entry_point
            ORDER BY repo_id, pair_id, class_fqn, method_name, id"""
     ).fetchall()
@@ -289,6 +290,7 @@ def _render_entry_points(
             "sources_short": ", ".join(ep["source_schema_ids"]),
             "target_schema_id": ep["target_schema_id"],
             "edge_count": ep["edge_count"],
+            "resolution_percent": ep["resolution_percent"],
             "line": ep["line"],
             "browse_url": ep["browse_url"],
             "rel_path": (Path("..") / rel_dir / filename).as_posix(),
@@ -318,7 +320,7 @@ def _entry_point_dict(row: tuple[Any, ...]) -> dict[str, Any]:
         "scope_common": bool(row[12]),
         "scope_country": row[13], "scope_clearing": row[14],
         "scope_product": row[15], "scope_field_group": row[16],
-        "edge_count": row[17],
+        "edge_count": row[17], "resolution_percent": row[18],
     }
 
 

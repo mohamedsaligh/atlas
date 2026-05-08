@@ -1050,9 +1050,46 @@ def _build_business_keys(cfg: AtlasConfig, cfg_dir: Path) -> dict[str, dict[str,
     out: dict[str, dict[str, FieldAttrs]] = {}
     for pair in cfg.pairs:
         for ref in [*pair.effective_sources(), *pair.effective_targets()]:
-            file = (cfg_dir / ref.file).resolve() if not Path(ref.file).is_absolute() else Path(ref.file)
+            file = _resolve_ref_file(ref.file, cfg, cfg_dir)
             out[ref.file] = enumerate_fields(file, ref.kind)
     return out
+
+
+def _resolve_ref_file(ref_file: str, cfg: AtlasConfig, cfg_dir: Path) -> Path:
+    """Locate a schema file referenced by ``pair.sources/targets[].file``.
+
+    YAMLs vary in where they place ``file:`` paths — some are relative to
+    the directory holding ``atlas.yml`` (the typical Python convention),
+    others are relative to the repo root one level up, others target a
+    file under one of the configured ``repos[].path`` trees. Try each
+    base in turn and stop at the first existing file. Used by
+    ``_build_business_keys`` and ``compute_atlas_sha`` so coverage and
+    determinism work regardless of which convention a user picked.
+    """
+    p = Path(os.path.expanduser(ref_file))
+    if p.is_absolute() and p.is_file():
+        return p
+    bases: list[Path] = [cfg_dir, cfg_dir.parent]
+    for repo in cfg.repos:
+        repo_root = Path(os.path.expanduser(repo.path)).resolve()
+        bases.extend([repo_root, repo_root.parent])
+    seen: set[Path] = set()
+    tried: list[Path] = []
+    for base in bases:
+        if base in seen:
+            continue
+        seen.add(base)
+        candidate = (base / ref_file).resolve()
+        tried.append(candidate)
+        if candidate.is_file():
+            return candidate
+    print(
+        f"[atlas] WARNING: schema file not found: {ref_file!r}\n"
+        f"  searched: {[str(p) for p in tried]!r}\n"
+        f"  coverage and atlas_sha will treat the file as empty.",
+        file=sys.stderr,
+    )
+    return (cfg_dir / ref_file).resolve()
 
 
 def _build_fqn_map(refs: list[SchemaRef]) -> dict[str, SchemaRef]:
@@ -1243,11 +1280,94 @@ def compute_atlas_sha(cfg: AtlasConfig, cfg_dir: Path, results: dict[tuple[str, 
         inputs.append(("repo", repo.id, _git_sha(repo.path)))
     for pair in cfg.pairs:
         for ref in [*pair.effective_sources(), *pair.effective_targets()]:
-            file = (cfg_dir / ref.file).resolve() if not Path(ref.file).is_absolute() else Path(ref.file)
+            file = _resolve_ref_file(ref.file, cfg, cfg_dir)
             h = hashlib.sha256(file.read_bytes()).hexdigest() if file.is_file() else "0" * 64
             inputs.append(("schema", ref.file, h))
     inputs.sort(key=str)
     return hashlib.sha256(json.dumps(inputs, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def _populate_coverage(
+    cur,
+    cfg: AtlasConfig,
+    results: dict[tuple[str, str], ExtractResult],
+    business_keys: dict[str, dict[str, FieldAttrs]],
+) -> None:
+    """Compute and persist two distinct, non-interchangeable metrics.
+
+    * **Pair-level ``coverage_percent``** (on ``coverage``): fraction of
+      the union of every target schema's leaves that at least one edge
+      writes. Answers "is the (repo, pair) mapping complete?".
+    * **Per-entry-point ``resolution_percent``** (on ``entry_point``):
+      fraction of this EP's own edges whose ``source_field_id`` landed
+      on a real schema path. Answers "did the resolver succeed for the
+      fields this method writes?".
+
+    Pair-level uses the schema as denominator (so a fully-implemented
+    pair is 100%). Per-EP uses the EP's own edge count as denominator
+    (so a narrow-scope EP that resolves all 5 of its 5 edges is 100%,
+    not 0.5%). Conflating the two would mislead a BA scanning the
+    index — the advisor caught this and we keep the metrics named for
+    what they actually measure.
+    """
+    pairs_by_id: dict[str, Pair] = {p.id: p for p in cfg.pairs}
+
+    for (repo_id, pair_id), res in results.items():
+        pair = pairs_by_id.get(pair_id)
+        if pair is None:
+            continue
+        target_leaves = _target_leaves(pair, business_keys)
+        denom = len(target_leaves)
+        if denom == 0:
+            continue
+        covered_paths = {
+            r[0] for r in cur.execute(
+                """SELECT DISTINCT tf.path
+                   FROM edge e JOIN field tf ON e.target_field_id = tf.id
+                   JOIN mapper m ON e.mapper_id = m.id
+                   WHERE e.pair_id = ? AND m.repo_id = ?""",
+                (pair_id, repo_id),
+            )
+        }
+        intersect = covered_paths & target_leaves
+        unmatched = sorted(target_leaves - covered_paths)
+        pct = round(100.0 * len(intersect) / denom, 2)
+        cur.execute(
+            """UPDATE coverage SET unmatched_json = ?, target_field_count = ?,
+               coverage_percent = ? WHERE repo_id = ? AND pair_id = ?""",
+            (json.dumps(unmatched, sort_keys=True), denom, pct, repo_id, pair_id),
+        )
+
+    # Per-entry-point resolution % — one global pass, computed off the
+    # edge table directly. Independent of pair-level coverage.
+    ep_resolution = cur.execute(
+        """SELECT entry_point_id,
+                  COUNT(*)                                         AS total,
+                  SUM(CASE WHEN source_field_id IS NOT NULL
+                           THEN 1 ELSE 0 END)                      AS resolved
+           FROM edge
+           WHERE entry_point_id IS NOT NULL
+           GROUP BY entry_point_id""",
+    ).fetchall()
+    for ep_id, total, resolved in ep_resolution:
+        if total == 0:
+            continue
+        pct = round(100.0 * resolved / total, 2)
+        cur.execute(
+            "UPDATE entry_point SET resolution_percent = ? WHERE id = ?",
+            (pct, ep_id),
+        )
+
+
+def _target_leaves(
+    pair: Pair, business_keys: dict[str, dict[str, FieldAttrs]],
+) -> set[str]:
+    out: set[str] = set()
+    for tgt in pair.effective_targets():
+        out.update(business_keys.get(tgt.file, {}).keys())
+    return out
+
+
 
 
 def persist(
@@ -1315,7 +1435,7 @@ def persist(
                    (id, pair_id, repo_id, class_fqn, method_name, method_signature,
                     source_schema_ids, target_schema_id, file, line, sha, browse_url,
                     scope_common, scope_country, scope_clearing, scope_product,
-                    scope_field_group, edge_count, coverage_percent)
+                    scope_field_group, edge_count, resolution_percent)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (ep.id, ep.pair_id, ep.repo_id, ep.class_fqn, ep.method_name,
                  ep.method_signature,
@@ -1393,10 +1513,20 @@ def persist(
                     seen_helper_fqns.add(step.helper_fqn)
             edge_total += 1
         cur.execute(
-            "INSERT OR REPLACE INTO coverage VALUES (?, ?, ?, ?, ?, ?, ?)",
+            """INSERT OR REPLACE INTO coverage
+               (repo_id, pair_id, files_scanned, mappers_detected, edges_emitted,
+                unparseable_json, unmatched_json, target_field_count, coverage_percent)
+               VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)""",
             (repo_id, pair_id, res.files_scanned, len(res.mappers), len(res.edges),
              json.dumps(res.unparseable, sort_keys=True), "[]"),
         )
+
+    # Coverage % — pair-level and per-entry-point. The denominator is the
+    # set of leaf paths in every target schema bound to the pair; the
+    # numerator is the set of those paths that at least one edge writes.
+    # Stored on `coverage` (per repo, pair) and `entry_point.coverage_percent`
+    # so a BA can sort or filter by completeness without re-deriving.
+    _populate_coverage(cur, cfg, results, business_keys)
     # snapshot
     cur.execute("DELETE FROM snapshot")
     cur.execute(

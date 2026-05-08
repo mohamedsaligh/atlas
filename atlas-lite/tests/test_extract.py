@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import sqlite3
 from pathlib import Path
@@ -217,6 +218,119 @@ def test_entry_point_markdown_inlines_helper_bodies(tmp_path, monkeypatch):
     index = (site / "entry-points" / "index.md").read_text(encoding="utf-8")
     assert "MultihopMapperImpl" in index
     assert "toLocal" in index
+
+
+def test_coverage_populated(tmp_path, monkeypatch):
+    """Coverage % must populate at pair-level and per-entry-point. Multihop
+    fixture: LocalDomain has 1 leaf (agentBic), the entry point emits 1
+    edge writing it → 100.0% on both axes."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    multihop_cfg = REPO / "examples" / "atlas.multihop.yml"
+    cfg = _cfg.load_config(multihop_cfg)
+    cfg_dir = multihop_cfg.parent.resolve()
+    db_path = tmp_path / "atlas.db"
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+
+    pair_pct, target_count, unmatched_json = conn.execute(
+        "SELECT coverage_percent, target_field_count, unmatched_json FROM coverage"
+    ).fetchone()
+    assert target_count == 1
+    assert pair_pct == 100.0
+    assert json.loads(unmatched_json) == []
+
+    # Per-EP resolution % — fraction of this EP's own edges that landed
+    # on a real source schema path. Multihop has 1 edge, fully resolved.
+    ep_pcts = [r[0] for r in conn.execute(
+        "SELECT resolution_percent FROM entry_point"
+    ).fetchall()]
+    assert ep_pcts == [100.0]
+
+
+def test_pair_coverage_with_unmatched(tmp_path, monkeypatch):
+    """Coverage subtraction — pair-level coverage_percent must drop and
+    unmatched_json must surface every target leaf the mapper does not write.
+    Uses the tiny-mapstruct fixture: LocalDomain has 4 leaves, the mapper
+    writes 4 of them. Patch a 5th synthetic leaf into business_keys to
+    exercise the subtraction path without mutating the fixture file."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = _cfg.load_config(CFG)
+    cfg_dir = CFG.parent.resolve()
+    db_path = tmp_path / "atlas.db"
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    # Inject a synthetic unwritten leaf into the target schema's
+    # business_keys map. The mapper writes 4 of 5 leaves → 80% coverage.
+    target_file = next(
+        ref.file for pair in cfg.pairs for ref in pair.effective_targets()
+    )
+    from atlas.schemas import FieldAttrs
+    bk[target_file]["unwrittenField"] = FieldAttrs(type_hint="string")
+
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+
+    pct, target_count, unmatched_json = conn.execute(
+        "SELECT coverage_percent, target_field_count, unmatched_json FROM coverage"
+    ).fetchone()
+    assert target_count == 5
+    assert pct == 80.0
+    assert json.loads(unmatched_json) == ["unwrittenField"]
+
+
+def test_impact_query_returns_affected_targets(tmp_path, monkeypatch):
+    """Reverse-edge BFS: changing Mt103:txInfo.financialInstId.bic must
+    surface every edge writing that source path. Uses the same SQL the CLI
+    runs so the test pins the impact contract."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    multihop_cfg = REPO / "examples" / "atlas.multihop.yml"
+    cfg = _cfg.load_config(multihop_cfg)
+    cfg_dir = multihop_cfg.parent.resolve()
+    db_path = tmp_path / "atlas.db"
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+
+    # Exact path
+    rows = conn.execute(
+        """SELECT tf.path, e.kind FROM edge e
+           JOIN field sf ON e.source_field_id = sf.id
+           JOIN field tf ON e.target_field_id = tf.id
+           WHERE sf.schema_id = ? AND (sf.path = ? OR sf.path LIKE ? || '.%')""",
+        ("Mt103.json", "txInfo.financialInstId.bic", "txInfo.financialInstId.bic"),
+    ).fetchall()
+    assert any(r == ("agentBic", "qualifier") for r in rows)
+
+    # Subtree: prefix should include descendants too. Asking for the parent
+    # `txInfo.financialInstId` should still surface the edge writing agentBic.
+    rows_prefix = conn.execute(
+        """SELECT tf.path FROM edge e
+           JOIN field sf ON e.source_field_id = sf.id
+           JOIN field tf ON e.target_field_id = tf.id
+           WHERE sf.schema_id = ? AND (sf.path = ? OR sf.path LIKE ? || '.%')""",
+        ("Mt103.json", "txInfo.financialInstId", "txInfo.financialInstId"),
+    ).fetchall()
+    assert any(r[0] == "agentBic" for r in rows_prefix)
+
+    # Unrelated path returns empty.
+    rows_none = conn.execute(
+        """SELECT tf.path FROM edge e
+           JOIN field sf ON e.source_field_id = sf.id
+           JOIN field tf ON e.target_field_id = tf.id
+           WHERE sf.schema_id = ? AND (sf.path = ? OR sf.path LIKE ? || '.%')""",
+        ("Mt103.json", "nonexistent.path", "nonexistent.path"),
+    ).fetchall()
+    assert rows_none == []
 
 
 def test_render_is_deterministic(tmp_path, monkeypatch):

@@ -1,12 +1,14 @@
-"""atlas CLI — extract / render / serve / validate-config / check."""
+"""atlas CLI — extract / render / coverage / impact / validate-config."""
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
 from . import config as _cfg
 from . import db as _db
@@ -88,6 +90,117 @@ def validate_config(
     """Load + JSON-schema-validate atlas.yml without running extraction."""
     _cfg.load_config(config)
     console.print(f"[bold green]ok[/] {config} valid")
+
+
+@app.command()
+def coverage(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False),
+    pair: str | None = typer.Option(None, "--pair"),
+    repo: str | None = typer.Option(None, "--repo"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Print pair-level coverage percentages, sorted lowest first."""
+    cfg = _cfg.load_config(config)
+    conn = _db.open_db(cfg.storage.db_path)
+    where = []
+    args: list[str] = []
+    if pair:
+        where.append("pair_id = ?"); args.append(pair)
+    if repo:
+        where.append("repo_id = ?"); args.append(repo)
+    sql = ("SELECT repo_id, pair_id, target_field_count, "
+           "edges_emitted, coverage_percent, unmatched_json FROM coverage")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY coverage_percent IS NULL, coverage_percent ASC, repo_id, pair_id"
+    rows = conn.execute(sql, args).fetchall()
+    if json_out:
+        out = [
+            {"repo": r[0], "pair": r[1], "target_field_count": r[2],
+             "edges": r[3], "coverage_percent": r[4],
+             "unmatched": json.loads(r[5] or "[]")}
+            for r in rows
+        ]
+        console.print_json(data=out)
+        return
+
+    table = Table(title="Coverage", header_style="bold")
+    table.add_column("repo")
+    table.add_column("pair")
+    table.add_column("target fields", justify="right")
+    table.add_column("edges", justify="right")
+    table.add_column("coverage %", justify="right")
+    table.add_column("unmatched", justify="right")
+    for r in rows:
+        unmatched = json.loads(r[5] or "[]")
+        pct_str = f"{r[4]:.2f}" if r[4] is not None else "—"
+        table.add_row(r[0], r[1], str(r[2] or 0), str(r[3]), pct_str, str(len(unmatched)))
+    console.print(table)
+
+
+@app.command()
+def impact(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False),
+    schema: str = typer.Option(..., "--schema", help="Source schema id (basename, e.g. Mt103.json)"),
+    path: str = typer.Option(..., "--path", help="Field path to trace (exact or subtree root)"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """Reverse-edge BFS: list every target field affected by changing the
+    given source path. Direct hits only — multi-pair chaining via
+    business_key is a Phase-2 follow-up."""
+    cfg = _cfg.load_config(config)
+    conn = _db.open_db(cfg.storage.db_path)
+    rows = conn.execute(
+        """SELECT ep.scope_country, ep.scope_clearing, ep.scope_product,
+                  ep.class_fqn, ep.method_name, ep.id,
+                  e.kind, e.line, e.browse_url, e.static_helper_fqn,
+                  sf.path AS source_path, tf.path AS target_path,
+                  ts.id AS target_schema_id, e.entry_point_id
+           FROM edge e
+           JOIN field sf ON e.source_field_id = sf.id
+           JOIN field tf ON e.target_field_id = tf.id
+           JOIN schema ts ON tf.schema_id = ts.id
+           LEFT JOIN entry_point ep ON e.entry_point_id = ep.id
+           WHERE sf.schema_id = ?
+             AND (sf.path = ? OR sf.path LIKE ? || '.%')
+           ORDER BY ep.scope_country, ep.scope_clearing, ep.scope_product,
+                    ep.class_fqn, ep.method_name, e.line""",
+        (schema, path, path),
+    ).fetchall()
+    if json_out:
+        out = [
+            {
+                "country": r[0] or "COMMON",
+                "clearing": r[1] or "COMMON",
+                "product": r[2] or "COMMON",
+                "class_fqn": r[3], "method_name": r[4],
+                "entry_point_id": r[5],
+                "kind": r[6], "line": r[7], "browse_url": r[8],
+                "helper": r[9],
+                "source_path": r[10], "target_path": r[11],
+                "target_schema": r[12],
+            }
+            for r in rows
+        ]
+        console.print_json(data=out)
+        return
+
+    if not rows:
+        console.print(f"[yellow]no impact[/] for {schema}:{path}")
+        return
+
+    table = Table(title=f"Impact of changing {schema}:{path}", header_style="bold")
+    table.add_column("country"); table.add_column("clearing"); table.add_column("product")
+    table.add_column("entry_point"); table.add_column("source"); table.add_column("→")
+    table.add_column("target"); table.add_column("kind"); table.add_column("line")
+    for r in rows:
+        ep_short = (r[3].rsplit(".", 1)[-1] + "." + r[4]) if r[3] else "(unknown)"
+        table.add_row(
+            r[0] or "COMMON", r[1] or "COMMON", r[2] or "COMMON",
+            ep_short, r[10], "→", f"{r[12]}:{r[11]}", r[6], f"L{r[7]}",
+        )
+    console.print(table)
+    console.print(f"[dim]{len(rows)} affected edges[/]")
 
 
 @app.command()

@@ -80,7 +80,12 @@ Single source of truth: SQLite at `cfg.storage.db_path` (default `~/.atlas/*.db`
 - `scope_country`, `scope_clearing`, `scope_product`, `scope_field_group` —
   flattened from `mapper.scope` for fast filter.
 - `edge_count` — pre-aggregated.
-- `coverage_percent` — populated by commit 3.
+- `resolution_percent` — fraction of this EP's own edges where the
+  resolver landed on a real source schema path (`source_field_id IS NOT
+  NULL`). Answers "did the resolver succeed for the fields this method
+  writes?". *Not* the same as pair-level `coverage_percent` (a narrow
+  EP that resolves all 5 of its 5 edges is 100% here, even if the
+  pair's target schema has 1000 leaves).
 
 **`helper`** — BA-readable proof:
 - `fqn`, `file`, `start_line`, `end_line` — line-anchored to the source.
