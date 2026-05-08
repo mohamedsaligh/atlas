@@ -177,7 +177,16 @@ def run_extract(
     for pair in cfg.pairs:
         if pair_filter and pair.id != pair_filter:
             continue
-        rcfg = selectors_by_id[pair.id].resolvers if pair.id in selectors_by_id else resolver_cfg_default
+        # Resolver config priority:
+        #   1. pair.resolvers (when set inline on the pair) — simplest user shape.
+        #   2. method_selectors[id == pair.id].resolvers — when both blocks coexist.
+        #   3. empty (back-compat: no helper following).
+        if pair.resolvers is not None:
+            rcfg = pair.resolvers
+        elif pair.id in selectors_by_id:
+            rcfg = selectors_by_id[pair.id].resolvers
+        else:
+            rcfg = resolver_cfg_default
         for repo in cfg.repos:
             if repo_filter and repo.id != repo_filter:
                 continue

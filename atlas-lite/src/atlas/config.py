@@ -46,6 +46,7 @@ class Pair(BaseModel):
     targets: list[SchemaRef] = Field(default_factory=list)
     scan_globs: list[str]
     scope_rules: list[ScopeRule] = Field(default_factory=list)
+    resolvers: "ResolverConfig | None" = None       # forward ref; defined below
     # Single-form alias kept for spec compatibility (§4); we promote to lists.
     source: SchemaRef | None = None
     target: SchemaRef | None = None
@@ -106,6 +107,10 @@ class MethodSelector(BaseModel):
     source_schemas: list[SchemaRef] = Field(default_factory=list)
     resolvers: ResolverConfig = ResolverConfig()
     scope_rules: list[ScopeRule] = Field(default_factory=list)
+
+
+# Resolve forward reference now that ResolverConfig is defined.
+Pair.model_rebuild()
 
 
 class AtlasConfig(BaseModel):

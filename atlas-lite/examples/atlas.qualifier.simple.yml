@@ -1,0 +1,37 @@
+# Same fixture as atlas.qualifier.yml, but using ONLY `pairs` with an inline
+# resolvers block. Demonstrates that method_selectors is optional — `pairs`
+# alone is sufficient when scan_globs are good enough to find the entry impls.
+version: 1
+
+bitbucket:
+  base_url: https://bitbucket.example.net
+  api_kind: server
+  auth: { token_env: BITBUCKET_TOKEN }
+  browse_template: "{base}/projects/{project}/repos/{repo}/browse/{file}?at={sha}#{line}"
+
+repos:
+  - id: payment-service
+    path: ./examples/fixtures/tiny-qualifier/payment-service
+    project: PMT
+    branch: main
+
+pairs:
+  - id: qualified_to_local
+    sources:
+      - { name: Mt103, file: examples/fixtures/tiny-qualifier/payment-service/payment-mapstruct/src/main/resources/Mt103.json, kind: json-schema, type_fqns: ["com.x.payment.model.source.Mt103"] }
+    targets:
+      - { name: LocalDomain, file: examples/fixtures/tiny-qualifier/payment-service/payment-mapstruct/src/main/resources/LocalDomain.json, kind: json-schema, type_fqns: ["com.x.payment.model.local.LocalDomain"] }
+    scan_globs:
+      - "payment-service/payment-mapstruct/src/main/java/**/mapper/**/*.java"
+    resolvers:
+      qualifier_classes:
+        - "com.x.payment.qualifier.QualifierDefinitions"
+      static_helper_classes:
+        - "com.x.payment.util.PurposeUtil"
+      max_depth: 5
+      follow_intra_class: true
+
+storage:
+  db_path: ~/.atlas/qualifier-simple.db
+  site_path: ~/.atlas/qualifier-simple-site
+  cache_path: ~/.atlas/cache
