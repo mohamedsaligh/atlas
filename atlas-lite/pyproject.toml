@@ -52,9 +52,104 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RET", "TID"]
-ignore = ["E501"]
+# Curated rule set — pragmatic for a tooling repo. Keep ANN off the
+# legacy modules (extract.py, resolvers.py) and tighten only on the
+# new API surface where types are already first-class.
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "N",   # pep8-naming
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "C4",  # comprehensions
+    "SIM", # simplify
+    "RET", # return statements
+    "TID", # tidy-imports
+    "PTH", # pathlib
+    "G",   # logging-format
+]
+ignore = [
+    "E501",   # line length — handled by formatter
+    "B008",   # function call in default arg — FastAPI Depends idiom
+    "TID252", # relative imports — common in our api/ subpackages
+    "PTH111", # os.path.expanduser — pragmatic, leave as-is
+    "PTH120", # os.path.dirname — same
+    "PTH118", # os.path.join — same
+    "UP046",  # Generic[T] base — required by Pydantic v2 generics
+    "G004",   # f-strings in logging — readability over performance for low-volume logs
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["B011", "S101"]
+"src/atlas/cli.py" = ["E402"]
+"src/atlas/extract.py" = ["N806", "E702", "B007", "SIM103", "RET504", "SIM222"]
+"src/atlas/resolvers.py" = ["F841"]
+"src/atlas/schemas.py" = ["N806", "SIM103"]
+"src/atlas/render.py" = ["E702"]
+"src/atlas/api/routers/*.py" = ["E702"]
+"src/atlas/api/middleware/auth.py" = ["F841"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = false  # global lenient — opt-in strict per module below
+ignore_missing_imports = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+disallow_untyped_defs = false
+no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+module = "atlas.api.*"
+strict = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_return_any = true
+
+[[tool.mypy.overrides]]
+module = ["jose.*", "cachetools.*", "tree_sitter.*", "tree_sitter_java.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# Legacy modules — extraction predates the strict-typing roll-out and is
+# retyped opportunistically. The drift gate ensures regressions can't
+# slip through coverage; mypy here is best-effort.
+module = ["atlas.extract", "atlas.index", "atlas.validate", "atlas.cli", "atlas.resolvers", "atlas.schemas"]
+ignore_errors = true
+
+[tool.coverage.run]
+branch = true
+source = ["src/atlas"]
+omit = [
+    "src/atlas/__main__.py",
+    "src/atlas/validate.py",  # dead code path, scheduled for removal
+    "tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@overload",
+]
+# Phase 2.3 baseline. Tightened to 80% incrementally as legacy modules
+# (cli, schemas, extract long-tail) gain dedicated unit coverage. The
+# `make cov-api` target enforces ≥85% on the new atlas.api subpackage —
+# every new endpoint must come with tests that keep it green.
+fail_under = 70
+show_missing = true
+skip_covered = false
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+addopts = "-q --strict-markers --strict-config"
+filterwarnings = [
+    "ignore::DeprecationWarning:jose.*",
+    "ignore::DeprecationWarning:passlib.*",
+    "ignore::PendingDeprecationWarning",
+    "ignore::ResourceWarning",
+    "ignore::pytest.PytestUnraisableExceptionWarning",
+]

@@ -13,14 +13,13 @@ from __future__ import annotations
 import os
 import re
 import sys
+from collections.abc import Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 import tree_sitter
 import tree_sitter_java
-
 
 _LANG: tree_sitter.Language | None = None
 
@@ -42,7 +41,7 @@ _SKIP_DIR_NAMES: set[str] = {
     ".next", ".nuxt", ".cache",
     # Inside a Maven `target/`, only generated-sources is interesting.
     "classes", "test-classes", "dependency", "site",
-    "surefire-reports", "failsafe-reports", "site",
+    "surefire-reports", "failsafe-reports",
 }
 
 
@@ -243,7 +242,7 @@ def _walk_java(root: Path) -> Iterable[Path]:
 def _parse_one(rel: str, abs_path: Path) -> IndexedFile | None:
     try:
         b = abs_path.read_bytes()
-    except (OSError, IOError):
+    except OSError:
         return None
     tree = _make_parser().parse(b)
     return IndexedFile(rel_path=rel, abs_path=abs_path, bytes=b, tree=tree)

@@ -26,7 +26,7 @@ import sqlite3
 from pathlib import Path
 from typing import Any
 
-from jinja2 import Environment, BaseLoader, StrictUndefined
+from jinja2 import BaseLoader, Environment, StrictUndefined
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Templates (module-level, single source of truth for output layout)

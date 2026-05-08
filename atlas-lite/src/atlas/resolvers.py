@@ -20,20 +20,18 @@ proof that the source path is real and traceable.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Optional
+from dataclasses import dataclass
 
 import tree_sitter
 
 from .config import ResolverConfig
 from .index import (
     JavaIndex,
-    fnmatch_class,
     _children_of_type,
     _descendants_of_type,
     _text,
+    fnmatch_class,
 )
-
 
 # ── data ─────────────────────────────────────────────────────────────────────
 
@@ -77,7 +75,7 @@ class SourceMatch:
     path: str
     trail: tuple[Resolution, ...] = ()
 
-    def with_step(self, step: Resolution) -> "SourceMatch":
+    def with_step(self, step: Resolution) -> SourceMatch:
         return SourceMatch(self.binding, self.path, self.trail + (step,))
 
 

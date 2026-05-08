@@ -40,18 +40,19 @@ import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import tree_sitter
 import tree_sitter_java
 
 from . import ATLAS_VERSION, TS_JAVA_VERSION
-from .config import AtlasConfig, MethodSelector, Pair, Repo, ResolverConfig, SchemaRef
+from .config import AtlasConfig, Pair, Repo, ResolverConfig, SchemaRef
 from .index import JavaIndex, build_index
 from .resolvers import (
     ParamBinding as ResolverParamBinding,
+)
+from .resolvers import (
     Resolution,
-    SourceMatch,
     collect_locals,
     resolve_source,
 )

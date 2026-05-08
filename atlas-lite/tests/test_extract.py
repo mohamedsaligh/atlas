@@ -4,14 +4,12 @@ from __future__ import annotations
 
 import json
 import os
-import sqlite3
 from pathlib import Path
 
 from atlas import config as _cfg
 from atlas import db as _db
 from atlas import extract as _extract
 from atlas import render as _render
-
 
 REPO = Path(__file__).resolve().parents[1]
 CFG = REPO / "examples" / "atlas.yml"
@@ -63,10 +61,10 @@ def test_determinism(tmp_path, monkeypatch):
     assert _extract.compute_atlas_sha(cfg, cfg_dir, r1) == _extract.compute_atlas_sha(cfg, cfg_dir, r2)
 
     edges_1 = sorted(
-        ((e.target.path, e.source.path if e.source else None, e.kind) for r in r1.values() for e in r.edges)
+        (e.target.path, e.source.path if e.source else None, e.kind) for r in r1.values() for e in r.edges
     )
     edges_2 = sorted(
-        ((e.target.path, e.source.path if e.source else None, e.kind) for r in r2.values() for e in r.edges)
+        (e.target.path, e.source.path if e.source else None, e.kind) for r in r2.values() for e in r.edges
     )
     assert edges_1 == edges_2
 
@@ -78,7 +76,7 @@ def test_qualifier_and_static_helper_following(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     cfg = _cfg.load_config(QUAL_CFG)
     cfg_dir = QUAL_CFG.parent.resolve()
-    bk = _extract._build_business_keys(cfg, cfg_dir)
+    _extract._build_business_keys(cfg, cfg_dir)  # ensure schemas resolve cleanly
     results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
 
     edges = [e for r in results.values() for e in r.edges]
@@ -338,6 +336,7 @@ def test_drift_gate_baseline_and_check(tmp_path, monkeypatch):
     when current matches baseline, and (3) fail with a non-zero exit when
     a previously-mapped target path becomes unmatched."""
     from typer.testing import CliRunner
+
     from atlas.cli import app
     runner = CliRunner()
 
@@ -405,9 +404,10 @@ def test_drift_gate_end_to_end_via_extract_path(tmp_path, monkeypatch):
     extract → persist → coverage path (not by mutating coverage rows
     directly). If `_populate_coverage` ever stops emitting unmatched_json
     correctly this test fails; the diff-math-only test does not."""
-    from atlas.schemas import FieldAttrs
     from typer.testing import CliRunner
+
     from atlas.cli import app
+    from atlas.schemas import FieldAttrs
     runner = CliRunner()
 
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -467,6 +467,7 @@ def test_drift_gate_rejects_unsupported_schema_version(tmp_path, monkeypatch):
     not 0 (false pass) and not 1 (regression). Distinct exit code lets CI
     pipelines tell "we have a real drift" from "the baseline is malformed"."""
     from typer.testing import CliRunner
+
     from atlas.cli import app
     runner = CliRunner()
 

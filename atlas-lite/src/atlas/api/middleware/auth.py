@@ -143,7 +143,8 @@ def _load_jwks(issuer: str) -> dict[str, Any]:
 def _http_get_json(url: str) -> dict[str, Any]:
     req = urllib.request.Request(url, headers={"Accept": "application/json"})
     with urllib.request.urlopen(req, timeout=10) as resp:  # noqa: S310
-        return json.loads(resp.read().decode("utf-8"))
+        data: dict[str, Any] = json.loads(resp.read().decode("utf-8"))
+        return data
 
 
 def _unauthorized(detail: str, instance: str) -> JSONResponse:

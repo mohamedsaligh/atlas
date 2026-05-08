@@ -12,7 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .. import ATLAS_VERSION
 from . import errors as _errors
-from .middleware.auth import AuthMiddleware, validate_settings as _validate_auth
+from .middleware.auth import AuthMiddleware
+from .middleware.auth import validate_settings as _validate_auth
 from .middleware.request_id import RequestIdMiddleware
 from .observability import logging as _obs_logging
 from .observability import metrics as _obs_metrics

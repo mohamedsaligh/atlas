@@ -46,7 +46,7 @@ class Pair(BaseModel):
     targets: list[SchemaRef] = Field(default_factory=list)
     scan_globs: list[str]
     scope_rules: list[ScopeRule] = Field(default_factory=list)
-    resolvers: "ResolverConfig | None" = None       # forward ref; defined below
+    resolvers: ResolverConfig | None = None       # forward ref; defined below
     # Single-form alias kept for spec compatibility (§4); we promote to lists.
     source: SchemaRef | None = None
     target: SchemaRef | None = None

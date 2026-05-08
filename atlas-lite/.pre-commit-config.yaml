@@ -1,0 +1,32 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=512]
+      - id: detect-private-key
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
+    hooks:
+      - id: ruff
+        args: [--fix]
+        files: ^atlas-lite/
+      - id: ruff-format
+        files: ^atlas-lite/
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.13.0
+    hooks:
+      - id: mypy
+        files: ^atlas-lite/src/atlas/api/
+        additional_dependencies:
+          - pydantic>=2.10
+          - pydantic-settings>=2.6
+          - fastapi>=0.115
+          - types-cachetools
+        args: [--config-file=atlas-lite/pyproject.toml]

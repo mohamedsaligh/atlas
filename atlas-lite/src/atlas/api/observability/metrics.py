@@ -24,7 +24,6 @@ from prometheus_client import (
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.routing import Match
-from starlette.types import ASGIApp
 
 REQ_COUNTER = Counter(
     "atlas_http_requests_total",

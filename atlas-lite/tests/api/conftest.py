@@ -14,7 +14,6 @@ from atlas import extract as _extract
 from atlas.api import create_app
 from atlas.api.settings import Settings
 
-
 REPO = Path(__file__).resolve().parents[2]
 MULTIHOP_CFG = REPO / "examples" / "atlas.multihop.yml"
 

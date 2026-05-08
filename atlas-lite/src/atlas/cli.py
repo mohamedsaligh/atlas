@@ -102,12 +102,14 @@ def coverage(
     """Print pair-level coverage percentages, sorted lowest first."""
     cfg = _cfg.load_config(config)
     conn = _db.open_db(cfg.storage.db_path)
-    where = []
+    where: list[str] = []
     args: list[str] = []
     if pair:
-        where.append("pair_id = ?"); args.append(pair)
+        where.append("pair_id = ?")
+        args.append(pair)
     if repo:
-        where.append("repo_id = ?"); args.append(repo)
+        where.append("repo_id = ?")
+        args.append(repo)
     sql = ("SELECT repo_id, pair_id, target_field_count, "
            "edges_emitted, coverage_percent, unmatched_json FROM coverage")
     if where:
@@ -190,9 +192,9 @@ def impact(
         return
 
     table = Table(title=f"Impact of changing {schema}:{path}", header_style="bold")
-    table.add_column("country"); table.add_column("clearing"); table.add_column("product")
-    table.add_column("entry_point"); table.add_column("source"); table.add_column("→")
-    table.add_column("target"); table.add_column("kind"); table.add_column("line")
+    for col in ("country", "clearing", "product", "entry_point",
+                "source", "→", "target", "kind", "line"):
+        table.add_column(col)
     for r in rows:
         ep_short = (r[3].rsplit(".", 1)[-1] + "." + r[4]) if r[3] else "(unknown)"
         table.add_row(
