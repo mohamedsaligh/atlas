@@ -115,6 +115,50 @@ def test_qualifier_and_static_helper_following(tmp_path, monkeypatch):
     assert by_target["channel"].kind == "constant"
 
 
+def test_multihop_qualifier_to_static_helper_to_param_chain(tmp_path, monkeypatch):
+    """N-deep resolver chain: qualifier method delegates into a static helper,
+    which dereferences a parameter that was passed as a getter chain on the
+    caller's source. The resolver must thread the path prefix through every
+    hop and recover the complete source path on the final edge.
+
+    Pattern:
+        target.setAgentBic(qualifiers.getAgentCpa(src.getTxInfo()))
+        QualifierDefinitions.getAgentCpa(txInfo) {
+            return MapperQualifierUtil.bicFromInst(txInfo.getFinancialInstId());
+        }
+        MapperQualifierUtil.bicFromInst(fi) { return fi.getBic(); }
+
+    Expected: agentBic <- txInfo.financialInstId.bic on Mt103.json,
+    with a 2-step trail: static_call (inner) then qualifier (outer).
+    """
+    monkeypatch.setenv("HOME", str(tmp_path))
+    multihop_cfg = REPO / "examples" / "atlas.multihop.yml"
+    cfg = _cfg.load_config(multihop_cfg)
+    cfg_dir = multihop_cfg.parent.resolve()
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    edges = [e for r in results.values() for e in r.edges]
+    assert len(edges) == 1, f"expected exactly one multihop edge, got {edges!r}"
+
+    e = edges[0]
+    assert e.target.path == "agentBic"
+    assert e.source is not None
+    assert e.source.schema_id == "Mt103.json"
+    assert e.source.path == "txInfo.financialInstId.bic"
+    assert e.kind == "qualifier"
+
+    # Trail records both hops in resolution order: inner static_call first,
+    # outer qualifier last.
+    trail_kinds = [step.kind for step in e.trail]
+    assert "static_call" in trail_kinds
+    assert "qualifier" in trail_kinds
+    assert e.trail[-1].kind == "qualifier"
+    assert e.trail[-1].helper_fqn.endswith(
+        "QualifierDefinitions.getAgentCpa"
+    )
+    inner_static = next(s for s in e.trail if s.kind == "static_call")
+    assert inner_static.helper_fqn.endswith("MapperQualifierUtil.bicFromInst")
+
+
 def test_local_var_init_expression_chasing(tmp_path, monkeypatch):
     """Bare identifier RHS that names a method-local var must be chased into
     its initialiser to recover the source path."""

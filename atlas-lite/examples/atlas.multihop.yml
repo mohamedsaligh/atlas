@@ -1,0 +1,28 @@
+version: 1
+
+repos:
+  - id: payment-service
+    path: ./examples/fixtures/tiny-multihop/payment-service
+    project: PMT
+    branch: main
+
+pairs:
+  - id: multihop_to_local
+    sources:
+      - { name: Mt103, file: examples/fixtures/tiny-multihop/payment-service/payment-mapstruct/src/main/resources/Mt103.json, kind: json-schema, type_fqns: ["com.x.payment.model.source.Mt103"] }
+    targets:
+      - { name: LocalDomain, file: examples/fixtures/tiny-multihop/payment-service/payment-mapstruct/src/main/resources/LocalDomain.json, kind: json-schema, type_fqns: ["com.x.payment.model.local.LocalDomain"] }
+    scan_globs:
+      - "payment-service/payment-mapstruct/src/main/java/**/mapper/**/*.java"
+    resolvers:
+      qualifier_classes:
+        - "com.x.payment.qualifier.*"
+      static_helper_classes:
+        - "com.x.payment.util.*"
+      max_depth: 5
+      follow_intra_class: true
+
+storage:
+  db_path: ~/.atlas/multihop.db
+  site_path: ~/.atlas/multihop-site
+  cache_path: ~/.atlas/multihop-cache

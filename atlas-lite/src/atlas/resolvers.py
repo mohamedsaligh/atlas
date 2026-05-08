@@ -43,6 +43,14 @@ class ParamBinding:
     var_name: str
     type_fqn: str
     schema_id: str
+    # Path already walked by the caller before this binding entered scope.
+    # When a helper is invoked with `helper(parent.getChild().getGrand())`,
+    # the helper's parameter is aliased to the *caller's* root binding with
+    # path_prefix="child.grand" — so when the helper does `param.getX()`
+    # the resolver lands on root → "child.grand.x" rather than restarting
+    # from an unbound type. This is what makes N-deep qualifier→static→
+    # parameter-chain resolution traceable end-to-end.
+    path_prefix: str = ""
 
 
 @dataclass(frozen=True)
@@ -131,7 +139,10 @@ def _resolve(
         name = _text(rhs, file_bytes)
         b = bindings.get(name)
         if b is not None:
-            return SourceMatch(b, "")
+            # path_prefix is the path the caller already walked before this
+            # binding entered scope (e.g. "txInfo.intermediaryAgent.financialInstId"
+            # when this helper was invoked with that getter chain).
+            return SourceMatch(b, b.path_prefix)
         # Local-var fallback: identifier names a method-local whose initialiser
         # might trace back to a known parameter.
         init = locals_init.get(name)
@@ -298,6 +309,7 @@ def _try_qualifier(
         file_bytes, file_rel, bindings, index, cfg, depth, visited | {cycle_key},
         kind="qualifier",
         call_node=call,
+        caller_locals_init=locals_init,
     )
 
 
@@ -347,6 +359,7 @@ def _try_static_helper(
         file_bytes, file_rel, bindings, index, cfg, depth, visited | {cycle_key},
         kind="static_call",
         call_node=call,
+        caller_locals_init=locals_init,
     )
 
 
@@ -385,6 +398,7 @@ def _try_intra_class(
         file_bytes, file_rel, bindings, index, cfg, depth, visited | {cycle_key},
         kind="intra_class",
         call_node=call,
+        caller_locals_init=locals_init,
     )
 
 
@@ -406,6 +420,7 @@ def _walk_helper_method(
     *,
     kind: str,
     call_node: tree_sitter.Node,
+    caller_locals_init: dict[str, tree_sitter.Node],
 ) -> SourceMatch | None:
     helper_fqn = f"{helper_class_fqn}.{helper_method_name}"
     helper_file = index.class_to_file.get(helper_class_fqn) or index.class_to_file.get(helper_class_fqn.split("$", 1)[0])
@@ -416,7 +431,14 @@ def _walk_helper_method(
         return None
 
     helper_params = _parse_params(helper, helper_indexed.bytes, helper_file, index)
-    new_bindings = _alias_caller_bindings(helper_params, caller_args, caller_file_bytes, caller_bindings)
+    # Alias each helper param to the caller's resolved root binding +
+    # accumulated path prefix. Crucial for N-deep chains
+    # (qualifier → static helper → param.getX().getY()).
+    new_bindings = _alias_caller_bindings(
+        helper_params, caller_args,
+        caller_file_bytes, caller_file_rel, caller_bindings,
+        index, cfg, depth, visited, caller_locals_init,
+    )
 
     body = helper.child_by_field_name("body")
     if body is None:
@@ -491,18 +513,42 @@ def _alias_caller_bindings(
     helper_params: dict[str, ParamBinding],
     caller_args: tree_sitter.Node,
     caller_bytes: bytes,
+    caller_file_rel: str,
     caller_bindings: dict[str, ParamBinding],
+    index: JavaIndex,
+    cfg: ResolverConfig,
+    depth: int,
+    visited: set[tuple[str, str]],
+    caller_locals_init: dict[str, tree_sitter.Node],
 ) -> dict[str, ParamBinding]:
+    """Alias each helper parameter to the caller's resolved source binding.
+
+    For each caller arg in positional order, run the full resolver chain in
+    the caller's scope. If it resolves to ``(root_binding, path)``, alias the
+    helper's parameter to that root with ``path_prefix=path`` — so any
+    dereference of the parameter inside the helper body lands on the original
+    source schema with the full accumulated path.
+
+    Falls back to the helper's own type-only binding when the arg can't be
+    resolved (literal, computed expression, unconfigured helper, etc.).
+    """
     out: dict[str, ParamBinding] = {}
     helper_names = list(helper_params.keys())
     arg_list = [c for c in caller_args.children if c.is_named and c.type not in (",", "(", ")")]
     for i, name in enumerate(helper_names):
         own = helper_params[name]
-        if i < len(arg_list) and arg_list[i].type == "identifier":
-            caller_var = _text(arg_list[i], caller_bytes)
-            caller = caller_bindings.get(caller_var)
-            if caller is not None:
-                out[name] = ParamBinding(name, caller.type_fqn, caller.schema_id)
+        if i < len(arg_list):
+            m = _resolve(
+                arg_list[i], caller_bytes, caller_file_rel, caller_bindings,
+                index, cfg, depth + 1, visited, caller_locals_init,
+            )
+            if m is not None:
+                out[name] = ParamBinding(
+                    var_name=name,
+                    type_fqn=m.binding.type_fqn,
+                    schema_id=m.binding.schema_id,
+                    path_prefix=m.path,
+                )
                 continue
         out[name] = own
     return out

@@ -649,7 +649,9 @@ class FileWalker:
         text: bytes,
         caller_params: dict[str, ParamBinding],
     ) -> dict[str, ParamBinding]:
-        # Keep helper's own params; alias names to caller bindings when arg is a bare identifier.
+        # Sibling-method recursion: alias each helper param to the caller's
+        # binding when the arg is a bare identifier. Preserves the caller's
+        # path_prefix so chains stay traceable across sibling-method hops.
         args_list = [
             c for c in inner_args.children
             if c.type not in (",", "(", ")") and c.is_named
@@ -661,7 +663,12 @@ class FileWalker:
                 caller_var = _text(args_list[i], text)
                 caller = caller_params.get(caller_var)
                 if caller is not None:
-                    out[name] = ParamBinding(name, caller.type_fqn, caller.schema_id)
+                    out[name] = ParamBinding(
+                        var_name=name,
+                        type_fqn=caller.type_fqn,
+                        schema_id=caller.schema_id,
+                        path_prefix=caller.path_prefix,
+                    )
                     continue
             out[name] = helper_params[name]
         return out
