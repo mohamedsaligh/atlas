@@ -333,6 +333,161 @@ def test_impact_query_returns_affected_targets(tmp_path, monkeypatch):
     assert rows_none == []
 
 
+def test_drift_gate_baseline_and_check(tmp_path, monkeypatch):
+    """The CI drift gate must (1) produce a deterministic baseline, (2) pass
+    when current matches baseline, and (3) fail with a non-zero exit when
+    a previously-mapped target path becomes unmatched."""
+    from typer.testing import CliRunner
+    from atlas.cli import app
+    runner = CliRunner()
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    multihop_cfg = REPO / "examples" / "atlas.multihop.yml"
+    cfg = _cfg.load_config(multihop_cfg)
+    cfg_dir = multihop_cfg.parent.resolve()
+    db_path = Path(os.path.expanduser(cfg.storage.db_path))
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+    conn.close()
+
+    baseline_path = tmp_path / "baseline.json"
+    r = runner.invoke(app, ["baseline", "-c", str(multihop_cfg),
+                            "--out", str(baseline_path)])
+    assert r.exit_code == 0, r.output
+    assert baseline_path.is_file()
+    bdoc = json.loads(baseline_path.read_text(encoding="utf-8"))
+    assert "schema_version" in bdoc
+    assert bdoc["pairs"]
+    pair_key = next(iter(bdoc["pairs"]))
+    assert bdoc["pairs"][pair_key]["coverage_percent"] == 100.0
+
+    # Clean run: current matches baseline → exit 0.
+    r = runner.invoke(app, ["check", "-c", str(multihop_cfg),
+                            "--baseline", str(baseline_path), "--max-added", "0"])
+    assert r.exit_code == 0, r.output
+    assert "drift gate passed" in r.output
+
+    # Regression: pretend a previously-mapped path is now unmatched.
+    # Mutate the baseline to claim *fewer* unmatched than today, which
+    # is equivalent to "today regressed by adding new unmatched fields".
+    bdoc["pairs"][pair_key]["unmatched"] = []
+    bdoc["pairs"][pair_key]["coverage_percent"] = 100.0
+    # Now add a synthetic regression on the live DB by deleting the only edge.
+    conn = _db.open_db(db_path)
+    conn.execute("DELETE FROM edge")
+    # Recompute coverage to reflect the deletion.
+    cur = conn.cursor()
+    _extract._populate_coverage(cur, cfg, results, bk)
+    # Re-query: but _populate_coverage takes results as input, not the
+    # current DB state. To simulate a real regression we need to reset
+    # coverage for the pair and re-derive from the now-empty edge table.
+    cur.execute(
+        """UPDATE coverage SET unmatched_json = ?, coverage_percent = 0.0
+           WHERE repo_id = ? AND pair_id = ?""",
+        (json.dumps(["agentBic"]), "payment-service", "multihop_to_local"),
+    )
+    conn.commit()
+    conn.close()
+
+    r = runner.invoke(app, ["check", "-c", str(multihop_cfg),
+                            "--baseline", str(baseline_path), "--max-added", "0"])
+    assert r.exit_code == 1, r.output
+    assert "drift gate failed" in r.output
+    assert "agentBic" in r.output
+
+
+def test_drift_gate_end_to_end_via_extract_path(tmp_path, monkeypatch):
+    """Honest drift-gate test: drive the regression through the full
+    extract → persist → coverage path (not by mutating coverage rows
+    directly). If `_populate_coverage` ever stops emitting unmatched_json
+    correctly this test fails; the diff-math-only test does not."""
+    from atlas.schemas import FieldAttrs
+    from typer.testing import CliRunner
+    from atlas.cli import app
+    runner = CliRunner()
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = _cfg.load_config(CFG)  # tiny-mapstruct
+    cfg_dir = CFG.parent.resolve()
+    db_path = Path(os.path.expanduser(cfg.storage.db_path))
+
+    # Stage 1: capture a baseline at "fully covered" — no synthetic leaf,
+    # so all 4 LocalDomain fields are marked written. coverage_percent=100.
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+    conn.close()
+
+    baseline_path = tmp_path / "baseline.json"
+    r = runner.invoke(app, ["baseline", "-c", str(CFG), "--out", str(baseline_path)])
+    assert r.exit_code == 0, r.output
+    bdoc = json.loads(baseline_path.read_text(encoding="utf-8"))
+    pair_key = next(iter(bdoc["pairs"]))
+    assert bdoc["pairs"][pair_key]["coverage_percent"] == 100.0
+
+    # Stage 2: re-extract with a synthetic 5th target leaf injected, going
+    # through the same persist + coverage path the production CLI uses.
+    # The mapper still writes only 4 → coverage drops to 80%, unmatched
+    # gains "newField".
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+    target_file = next(
+        ref.file for pair in cfg.pairs for ref in pair.effective_targets()
+    )
+    bk2 = _extract._build_business_keys(cfg, cfg_dir)
+    bk2[target_file]["newField"] = FieldAttrs(type_hint="string")
+    results2 = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha2 = _extract.compute_atlas_sha(cfg, cfg_dir, results2)
+    _extract.persist(conn, cfg, cfg_dir, results2, bk2, atlas_sha2)
+    conn.close()
+
+    # Stage 3: gate must fail and surface the new unmatched path.
+    r = runner.invoke(app, ["check", "-c", str(CFG),
+                            "--baseline", str(baseline_path), "--max-added", "0"])
+    assert r.exit_code == 1, r.output
+    assert "drift gate failed" in r.output
+    assert "newField" in r.output
+
+    # Tolerance: setting --max-added 1 lets the regression through.
+    r = runner.invoke(app, ["check", "-c", str(CFG),
+                            "--baseline", str(baseline_path), "--max-added", "1",
+                            "--max-coverage-drop", "100.0"])
+    assert r.exit_code == 0, r.output
+
+
+def test_drift_gate_rejects_unsupported_schema_version(tmp_path, monkeypatch):
+    """A baseline file with the wrong schema_version exits with code 2 —
+    not 0 (false pass) and not 1 (regression). Distinct exit code lets CI
+    pipelines tell "we have a real drift" from "the baseline is malformed"."""
+    from typer.testing import CliRunner
+    from atlas.cli import app
+    runner = CliRunner()
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    cfg = _cfg.load_config(CFG)
+    cfg_dir = CFG.parent.resolve()
+    db_path = Path(os.path.expanduser(cfg.storage.db_path))
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+    conn.close()
+
+    bad = tmp_path / "bad.json"
+    bad.write_text(json.dumps({"schema_version": 99, "pairs": {}}), encoding="utf-8")
+    r = runner.invoke(app, ["check", "-c", str(CFG), "--baseline", str(bad)])
+    assert r.exit_code == 2, r.output
+
+
 def test_render_is_deterministic(tmp_path, monkeypatch):
     """The Markdown render must be byte-identical across repeated runs over
     the same SQLite snapshot. Determinism is a load-bearing invariant —

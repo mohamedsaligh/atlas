@@ -204,6 +204,146 @@ def impact(
 
 
 @app.command()
+def baseline(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False),
+    out: Path = typer.Option(Path("coverage-baseline.json"), "--out", help="Where to write the baseline"),
+) -> None:
+    """Snapshot the current coverage state to a baseline file consumed by
+    ``atlas check``. The baseline is the contract CI gates against — commit
+    it alongside atlas.yml and refresh deliberately when coverage genuinely
+    moves."""
+    cfg = _cfg.load_config(config)
+    conn = _db.open_db(cfg.storage.db_path)
+    rows = conn.execute(
+        """SELECT repo_id, pair_id, target_field_count, coverage_percent, unmatched_json
+           FROM coverage ORDER BY repo_id, pair_id"""
+    ).fetchall()
+    snap = conn.execute("SELECT atlas_sha FROM snapshot LIMIT 1").fetchone()
+    payload: dict[str, object] = {
+        "schema_version": 1,
+        "atlas_sha": snap[0] if snap else None,
+        "pairs": {
+            f"{r[0]}:{r[1]}": {
+                "target_field_count": r[2],
+                "coverage_percent": r[3],
+                "unmatched": json.loads(r[4] or "[]"),
+            }
+            for r in rows
+        },
+    }
+    out.write_text(
+        json.dumps(payload, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    console.print(f"[bold green]ok[/] baseline written to {out} ({len(payload['pairs'])} pair(s))")
+
+
+@app.command()
+def check(
+    config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False),
+    baseline_path: Path = typer.Option(..., "--baseline", exists=True, dir_okay=False),
+    max_added: int = typer.Option(0, "--max-added", min=0,
+        help="Allowable count of newly-unmatched target paths per pair before the gate fires"),
+    max_coverage_drop: float = typer.Option(0.0, "--max-coverage-drop", min=0.0,
+        help="Allowable absolute coverage_percent drop (e.g. 0.5 → permit 99.5 → 99.0)"),
+    json_out: bool = typer.Option(False, "--json"),
+) -> None:
+    """CI drift gate. Compare current pair-level coverage against a baseline.
+    Exits non-zero when any pair's regression exceeds the configured caps."""
+    cfg = _cfg.load_config(config)
+    conn = _db.open_db(cfg.storage.db_path)
+    baseline_doc = json.loads(baseline_path.read_text(encoding="utf-8"))
+    sv = baseline_doc.get("schema_version")
+    if sv != 1:
+        console.print(f"[red]unsupported baseline schema_version: {sv!r}[/]")
+        raise typer.Exit(code=2)
+    base_pairs: dict[str, dict] = baseline_doc.get("pairs", {})
+
+    rows = conn.execute(
+        """SELECT repo_id, pair_id, target_field_count, coverage_percent, unmatched_json
+           FROM coverage ORDER BY repo_id, pair_id"""
+    ).fetchall()
+    current: dict[str, dict] = {
+        f"{r[0]}:{r[1]}": {
+            "target_field_count": r[2],
+            "coverage_percent": r[3],
+            "unmatched": json.loads(r[4] or "[]"),
+        }
+        for r in rows
+    }
+
+    diff: list[dict] = []
+    failed = False
+    for key in sorted(set(current) | set(base_pairs)):
+        cur = current.get(key) or {"target_field_count": 0, "coverage_percent": None, "unmatched": []}
+        base = base_pairs.get(key) or {"target_field_count": 0, "coverage_percent": None, "unmatched": []}
+        added = sorted(set(cur["unmatched"]) - set(base["unmatched"]))
+        removed = sorted(set(base["unmatched"]) - set(cur["unmatched"]))
+        cur_pct = cur["coverage_percent"] if cur["coverage_percent"] is not None else 0.0
+        base_pct = base["coverage_percent"] if base["coverage_percent"] is not None else 0.0
+        cov_drop = round(base_pct - cur_pct, 2)
+        regression = (len(added) > max_added) or (cov_drop > max_coverage_drop)
+        if regression:
+            failed = True
+        diff.append({
+            "pair": key,
+            "coverage_percent": cur["coverage_percent"],
+            "baseline_coverage_percent": base["coverage_percent"],
+            "coverage_drop": cov_drop,
+            "added_unmatched": added,
+            "removed_unmatched": removed,
+            "regression": regression,
+        })
+
+    if json_out:
+        console.print_json(data={
+            "max_added": max_added,
+            "max_coverage_drop": max_coverage_drop,
+            "failed": failed,
+            "diff": diff,
+        })
+    else:
+        table = Table(title="Drift gate", header_style="bold")
+        table.add_column("pair")
+        table.add_column("coverage %", justify="right")
+        table.add_column("Δ %", justify="right")
+        table.add_column("+ unmatched", justify="right")
+        table.add_column("− unmatched", justify="right")
+        table.add_column("regression?", justify="center")
+        for d in diff:
+            pct = "—" if d["coverage_percent"] is None else f"{d['coverage_percent']:.2f}"
+            table.add_row(
+                d["pair"], pct, f"{d['coverage_drop']:+.2f}",
+                str(len(d["added_unmatched"])),
+                str(len(d["removed_unmatched"])),
+                ("[red]YES[/]" if d["regression"] else "[green]no[/]"),
+            )
+        console.print(table)
+        for d in diff:
+            if d["regression"]:
+                console.print(f"[red]regression[/] in {d['pair']}: "
+                              f"+{len(d['added_unmatched'])} unmatched, "
+                              f"Δ {d['coverage_drop']:+.2f}%")
+                if d["added_unmatched"]:
+                    for path in d["added_unmatched"]:
+                        console.print(f"  [red]+[/] {path}")
+        stale = any(d["removed_unmatched"] for d in diff)
+        if stale:
+            console.print(
+                "[yellow]baseline is stale[/]: at least one pair now covers fields "
+                "the baseline still lists as unmatched. Re-run "
+                "`atlas baseline` to refresh."
+            )
+        if failed:
+            console.print("[bold red]drift gate failed[/]")
+        else:
+            console.print("[bold green]drift gate passed[/]")
+
+    if failed:
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def version() -> None:
     from . import ATLAS_VERSION
     console.print(f"atlas-lite {ATLAS_VERSION}")

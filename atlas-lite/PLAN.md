@@ -39,15 +39,17 @@ view, Obsidian-style graph, enterprise production grade).
 | Helper-body capture | ✅ shipped (commit `8b3c666`) | `helper` table, FQN-deduped, full body verbatim with start/end line anchors. |
 | `static_helper_fqn` on qualifier kind | ✅ shipped (commit `8b3c666`) | Back-filled from the resolution trail. Direct joins without going through `edge_resolution`. |
 | **N-deep path-prefix bindings** | ✅ shipped (commit `73f66a7`) | Helper params now inherit the caller's source root + accumulated path. Closes the gap where qualifier→static→`param.getX().getY()` resolved to `_(constant)_`. |
-| Coverage % denominator | ⏳ commit 3 | `unmatchedTargetFields` against the target schema. Both JSON Schema and `kind: java-class` supported. |
-| Impact CLI (`atlas impact <field>`) | ⏳ commit 3 | Reverse-edge BFS, output grouped by country/clearing/product/entry-point. |
-| BA-grade Markdown render | ⏳ commit 2 | Per-entry-point `.md` with helper bodies inlined under each qualifier/static_call edge. |
+| BA-grade Markdown render | ✅ shipped (commit `966289d`) | Per-entry-point `.md` with helper bodies inlined verbatim under each qualifier/static_call edge. Top-level `entry-points/index.md` grouped by scope. |
+| Pair-level coverage % + unmatched | ✅ shipped (commit `5e4dc0c`) | `coverage.coverage_percent` + `coverage.unmatched_json` populated against the target schema. JSON Schema and `kind: java-class` both supported. |
+| Per-EP resolution % | ✅ shipped (commit `5e4dc0c`) | `entry_point.resolution_percent` — fraction of this EP's edges that resolved to a real source path. |
+| Impact CLI (`atlas impact`) | ✅ shipped (commit `5e4dc0c`) | Reverse-edge BFS, output grouped by country/clearing/product/entry-point. |
+| Drift gate (`atlas baseline` + `atlas check`) | ✅ shipped (commit pending) | Captures coverage to `coverage-baseline.json`, fails with exit 1 when added unmatched paths or coverage drop exceed thresholds, exit 2 on bad baseline. CI ready. |
 | REST API (FastAPI) + OpenAPI | ⏳ Phase 2 | Substrate for UI + graph; OpenAPI is the contract; CI hardens here. |
 | E2E table UI (React + Tailwind) | ⏳ Phase 3 | Country → clearing → product → entry-point → field, filterable. Builds on REST. |
 | Obsidian-style graph (WebGL) | ⏳ Phase 3 | `react-force-graph-3d` (Three.js) at ~50k-edge scale. Hardest piece. |
 | CI hardening (lint + mypy + pytest --cov ≥80%) | ⏳ Phase 2 | Bundled with REST + container build + SBOM. |
 
-**Test count today:** 5/5 passing (`tests/test_extract.py`).
+**Test count today:** 13/13 passing (`tests/test_extract.py`).
 
 ---
 
