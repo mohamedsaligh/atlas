@@ -1,0 +1,24 @@
+version: 1
+
+repos:
+  - id: payment-service
+    path: ./examples/fixtures/tiny-locals/payment-service
+    project: PMT
+    branch: main
+
+pairs:
+  - id: locals_to_local
+    sources:
+      - { name: Mt103, file: examples/fixtures/tiny-locals/payment-service/payment-mapstruct/src/main/resources/Mt103.json, kind: json-schema, type_fqns: ["com.x.payment.model.source.Mt103"] }
+    targets:
+      - { name: LocalDomain, file: examples/fixtures/tiny-locals/payment-service/payment-mapstruct/src/main/resources/LocalDomain.json, kind: json-schema, type_fqns: ["com.x.payment.model.local.LocalDomain"] }
+    scan_globs:
+      - "payment-service/payment-mapstruct/src/main/java/**/mapper/**/*.java"
+    resolvers:
+      max_depth: 5
+      follow_intra_class: true
+
+storage:
+  db_path: ~/.atlas/locals.db
+  site_path: ~/.atlas/locals-site
+  cache_path: ~/.atlas/cache

@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mt103",
+  "type": "object",
+  "properties": {
+    "header": {
+      "type": "object",
+      "properties": {
+        "channelName":   { "type": "string" },
+        "channelFormat": { "type": "string" }
+      }
+    }
+  }
+}

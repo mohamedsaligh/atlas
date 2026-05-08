@@ -113,3 +113,24 @@ def test_qualifier_and_static_helper_following(tmp_path, monkeypatch):
     # Constant.
     assert by_target["channel"].source is None
     assert by_target["channel"].kind == "constant"
+
+
+def test_local_var_init_expression_chasing(tmp_path, monkeypatch):
+    """Bare identifier RHS that names a method-local var must be chased into
+    its initialiser to recover the source path."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    locals_cfg = REPO / "examples" / "atlas.locals.yml"
+    cfg = _cfg.load_config(locals_cfg)
+    cfg_dir = locals_cfg.parent.resolve()
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    edges = [e for r in results.values() for e in r.edges]
+    by_target = {e.target.path: e for e in edges}
+
+    e = by_target["channelName"]
+    assert e.source is not None
+    assert e.source.path == "header.channelName"
+    assert e.kind == "rename"
+
+    e = by_target["channelFormat"]
+    assert e.source is not None
+    assert e.source.path == "header.channelFormat"

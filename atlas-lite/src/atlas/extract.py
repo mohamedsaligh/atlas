@@ -52,6 +52,7 @@ from .resolvers import (
     ParamBinding as ResolverParamBinding,
     Resolution,
     SourceMatch,
+    collect_locals,
     resolve_source,
 )
 from .schemas import FieldAttrs, enumerate_fields
@@ -404,6 +405,11 @@ class FileWalker:
             return
         mapper_id = class_fqn
 
+        # Collect method-local variables once per entry method body. Used by
+        # the resolver to chase identifier RHS expressions back to their
+        # initialiser when the identifier names a local var (Bucket C).
+        self._method_locals = collect_locals(body)
+
         # Walk every method_invocation in the body.
         for call in _descendants_of_type(body, "method_invocation"):
             obj = _child_by_field(call, "object")
@@ -474,6 +480,7 @@ class FileWalker:
         kind = _classify(first_arg, text)
         match = resolve_source(
             first_arg, text, self.rel, params, self.index, self.resolver_cfg,
+            locals_init=getattr(self, "_method_locals", None),
         )
         static_helper_fqn = _extract_static_helper_fqn(first_arg, text, imports)
 
@@ -711,6 +718,10 @@ def _classify(node: tree_sitter.Node, text: bytes) -> str:
              "decimal_floating_point_literal", "hex_floating_point_literal",
              "true", "false", "null_literal", "character_literal"):
         return "constant"
+    if t == "object_creation_expression":
+        return "construction"
+    if t == "array_creation_expression":
+        return "construction"
     if t == "binary_expression":
         return "concat"
     if t == "ternary_expression":

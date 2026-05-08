@@ -62,6 +62,7 @@ class JavaIndex:
     methods_by_class: dict[str, dict[str, tree_sitter.Node]] = field(default_factory=dict)
     imports_by_file: dict[str, dict[str, str]] = field(default_factory=dict)
     field_types: dict[str, dict[str, str]] = field(default_factory=dict)
+    superclass_raw: dict[str, str] = field(default_factory=dict)  # FQN → super simple name (unresolved)
 
     def lookup_method(self, class_fqn: str, method_name: str) -> tree_sitter.Node | None:
         return self.methods_by_class.get(class_fqn, {}).get(method_name)
@@ -88,6 +89,25 @@ class JavaIndex:
 
     def field_type(self, class_fqn: str, field_name: str) -> str | None:
         return self.field_types.get(class_fqn, {}).get(field_name)
+
+    def field_type_with_inheritance(self, class_fqn: str, field_name: str) -> str | None:
+        """Walk the extends chain looking for a field. Used by the resolver
+        when a field is declared on an abstract parent (common in MapStruct
+        Impl extending an abstract base that holds qualifier instances)."""
+        seen: set[str] = set()
+        cur = class_fqn
+        while cur and cur not in seen:
+            seen.add(cur)
+            ft = self.field_types.get(cur, {}).get(field_name)
+            if ft is not None:
+                return ft
+            super_simple = self.superclass_raw.get(cur)
+            if not super_simple:
+                return None
+            cur_file = self.class_to_file.get(cur)
+            imps = self.imports_by_file.get(cur_file or "", {})
+            cur = imps.get(super_simple, super_simple)
+        return None
 
     def package_of(self, rel_path: str) -> str:
         f = self.files.get(rel_path)
@@ -166,6 +186,15 @@ def build_index(
             index.class_to_file[fqn] = rel
             method_map = index.methods_by_class.setdefault(fqn, {})
             field_map = index.field_types.setdefault(fqn, {})
+            # Capture extends chain (raw simple name; resolved at lookup time).
+            super_node = cls.child_by_field_name("superclass")
+            if super_node is not None:
+                for c in super_node.children:
+                    if c.type in ("type_identifier", "scoped_type_identifier", "generic_type"):
+                        super_text = _text(c, f.bytes).split("<")[0].strip()
+                        if super_text:
+                            index.superclass_raw[fqn] = super_text
+                        break
             body = cls.child_by_field_name("body")
             if body is None:
                 continue
