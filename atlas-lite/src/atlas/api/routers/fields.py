@@ -30,11 +30,14 @@ def search_fields(
     where: list[str] = []
     args: list[object] = []
     if schema:
-        where.append("schema_id = ?"); args.append(schema)
+        where.append("schema_id = ?")
+        args.append(schema)
     if path_prefix:
-        where.append("path LIKE ?"); args.append(f"%{path_prefix}%")
+        where.append("path LIKE ?")
+        args.append(f"%{path_prefix}%")
     if business_key:
-        where.append("business_key = ?"); args.append(business_key)
+        where.append("business_key = ?")
+        args.append(business_key)
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
     rows = conn.execute(
@@ -46,8 +49,11 @@ def search_fields(
     ).fetchall()
     return [
         FieldRow(
-            id=r["id"], schema_id=r["schema_id"], path=r["path"],
-            business_key=r["business_key"], type=r["type"],
+            id=r["id"],
+            schema_id=r["schema_id"],
+            path=r["path"],
+            business_key=r["business_key"],
+            type=r["type"],
         )
         for r in rows
     ]
@@ -74,8 +80,11 @@ def find_field(
             detail=f"field {schema}:{path} not found",
         )
     return FieldRow(
-        id=row["id"], schema_id=row["schema_id"], path=row["path"],
-        business_key=row["business_key"], type=row["type"],
+        id=row["id"],
+        schema_id=row["schema_id"],
+        path=row["path"],
+        business_key=row["business_key"],
+        type=row["type"],
     )
 
 
@@ -97,7 +106,10 @@ def find_field_edges(
 
 
 def _edges_for(
-    conn: sqlite3.Connection, column: str, field_id: str, limit: int,
+    conn: sqlite3.Connection,
+    column: str,
+    field_id: str,
+    limit: int,
 ) -> list[EdgeRow]:
     rows = conn.execute(
         f"""SELECT e.id, e.pair_id, e.mapper_id, e.entry_point_id, e.kind,
@@ -114,13 +126,20 @@ def _edges_for(
     ).fetchall()
     return [
         EdgeRow(
-            id=r["id"], pair_id=r["pair_id"], mapper_id=r["mapper_id"],
-            entry_point_id=r["entry_point_id"], kind=r["kind"],
-            expression=r["expression"], static_helper_fqn=r["static_helper_fqn"],
-            source_schema_id=r["source_schema_id"], source_path=r["source_path"],
+            id=r["id"],
+            pair_id=r["pair_id"],
+            mapper_id=r["mapper_id"],
+            entry_point_id=r["entry_point_id"],
+            kind=r["kind"],
+            expression=r["expression"],
+            static_helper_fqn=r["static_helper_fqn"],
+            source_schema_id=r["source_schema_id"],
+            source_path=r["source_path"],
             target_schema_id=r["target_schema_id"] or "",
             target_path=r["target_path"] or "",
-            file=r["file"], line=r["line"], browse_url=r["browse_url"] or None,
+            file=r["file"],
+            line=r["line"],
+            browse_url=r["browse_url"] or None,
         )
         for r in rows
     ]

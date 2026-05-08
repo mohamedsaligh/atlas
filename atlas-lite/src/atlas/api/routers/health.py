@@ -18,9 +18,7 @@ router = APIRouter(tags=["health"])
     summary="Liveness + snapshot identity probe",
 )
 def health(conn: sqlite3.Connection = Depends(get_db)) -> HealthResponse:
-    row = conn.execute(
-        "SELECT atlas_sha, extractor_ver, built_at FROM snapshot LIMIT 1"
-    ).fetchone()
+    row = conn.execute("SELECT atlas_sha, extractor_ver, built_at FROM snapshot LIMIT 1").fetchone()
     if row is None:
         return HealthResponse(status="ok")
     return HealthResponse(

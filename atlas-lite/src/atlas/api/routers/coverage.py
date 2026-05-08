@@ -28,14 +28,14 @@ def list_coverage(
     where: list[str] = []
     args: list[object] = []
     if repo:
-        where.append("repo_id = ?"); args.append(repo)
+        where.append("repo_id = ?")
+        args.append(repo)
     if pair:
-        where.append("pair_id = ?"); args.append(pair)
+        where.append("pair_id = ?")
+        args.append(pair)
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
-    total = conn.execute(
-        f"SELECT COUNT(*) AS n FROM coverage {where_sql}", args
-    ).fetchone()["n"]
+    total = conn.execute(f"SELECT COUNT(*) AS n FROM coverage {where_sql}", args).fetchone()["n"]
 
     rows = conn.execute(
         f"""SELECT repo_id, pair_id, target_field_count, coverage_percent,
@@ -48,7 +48,8 @@ def list_coverage(
     ).fetchall()
     items = [
         CoverageRow(
-            repo_id=r["repo_id"], pair_id=r["pair_id"],
+            repo_id=r["repo_id"],
+            pair_id=r["pair_id"],
             target_field_count=r["target_field_count"],
             coverage_percent=r["coverage_percent"],
             edges_emitted=r["edges_emitted"],

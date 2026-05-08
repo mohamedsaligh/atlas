@@ -31,9 +31,7 @@ def impact(
     size: int = Query(100, ge=1, le=1000),
     conn: sqlite3.Connection = Depends(get_db),
 ) -> Page[ImpactRow]:
-    where = (
-        "WHERE sf.schema_id = ? AND (sf.path = ? OR sf.path LIKE ? || '.%')"
-    )
+    where = "WHERE sf.schema_id = ? AND (sf.path = ? OR sf.path LIKE ? || '.%')"
     args = (schema, path, path)
 
     total = conn.execute(
@@ -70,14 +68,20 @@ def impact(
             method_name=r["method_name"],
             scope=Scope(
                 common=bool(r["scope_common"] or 0),
-                country=r["scope_country"], clearing=r["scope_clearing"],
-                product=r["scope_product"], field_group=r["scope_field_group"],
+                country=r["scope_country"],
+                clearing=r["scope_clearing"],
+                product=r["scope_product"],
+                field_group=r["scope_field_group"],
             ),
-            edge_id=r["edge_id"], kind=r["kind"],
+            edge_id=r["edge_id"],
+            kind=r["kind"],
             helper=r["static_helper_fqn"],
-            source_schema_id=r["source_schema_id"], source_path=r["source_path"],
-            target_schema_id=r["target_schema_id"], target_path=r["target_path"],
-            line=r["line"], browse_url=r["browse_url"] or None,
+            source_schema_id=r["source_schema_id"],
+            source_path=r["source_path"],
+            target_schema_id=r["target_schema_id"],
+            target_path=r["target_path"],
+            line=r["line"],
+            browse_url=r["browse_url"] or None,
         )
         for r in rows
     ]

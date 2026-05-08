@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict
 class ResolutionStep(BaseModel):
     """One hop the resolver walked: setter site, wrapper-arg, qualifier
     body, static helper body, or intra-class helper body."""
+
     model_config = ConfigDict(frozen=True)
 
     seq: int
@@ -22,6 +23,7 @@ class EdgeRow(BaseModel):
     """Compact edge row. Source / target paths are surfaced as strings
     rather than field IDs because BAs care about paths, not the
     internal schema-id#path concatenation."""
+
     model_config = ConfigDict(frozen=True)
 
     id: str
@@ -42,4 +44,5 @@ class EdgeRow(BaseModel):
 
 class EdgeWithResolution(EdgeRow):
     """Edge plus its full resolution trail. Use for audit / detail views."""
+
     trail: list[ResolutionStep]

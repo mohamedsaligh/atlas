@@ -42,8 +42,7 @@ def get_db(
 def _open_readonly(path: Path) -> sqlite3.Connection:
     if not path.is_file():
         raise FileNotFoundError(
-            f"Atlas DB not found at {path!s}. "
-            f"Run `atlas extract -c atlas.yml --full` first."
+            f"Atlas DB not found at {path!s}. Run `atlas extract -c atlas.yml --full` first."
         )
     uri = f"file:{path}?mode=ro"
     conn = sqlite3.connect(uri, uri=True, check_same_thread=False)

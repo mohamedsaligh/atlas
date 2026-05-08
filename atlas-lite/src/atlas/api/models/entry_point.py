@@ -11,6 +11,7 @@ from .helper import HelperBody
 
 class EntryPointSummary(BaseModel):
     """Compact entry-point row for paginated lists."""
+
     model_config = ConfigDict(frozen=True)
 
     id: str
@@ -41,5 +42,6 @@ class EntryPointDetail(EntryPointSummary):
     resolver walked through. Inline helper bodies are how a Business
     Analyst reads the actual transformation logic without leaving the
     response."""
+
     edges: list[EdgeRow]
     helpers: list[HelperBody]

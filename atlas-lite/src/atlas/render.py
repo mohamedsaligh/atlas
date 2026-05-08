@@ -173,7 +173,10 @@ def render_site(conn: sqlite3.Connection, out_dir: Path) -> dict[str, int]:
     out_dir = Path(os.path.expanduser(str(out_dir)))
     out_dir.mkdir(parents=True, exist_ok=True)
     counts: dict[str, int] = {
-        "mapper_md": 0, "entry_point_md": 0, "service_jsonld": 0, "index_md": 0,
+        "mapper_md": 0,
+        "entry_point_md": 0,
+        "service_jsonld": 0,
+        "index_md": 0,
     }
 
     snapshot_row = conn.execute("SELECT atlas_sha FROM snapshot LIMIT 1").fetchone()
@@ -198,7 +201,10 @@ def render_site(conn: sqlite3.Connection, out_dir: Path) -> dict[str, int]:
 
 
 def _render_mappers(
-    conn: sqlite3.Connection, out_dir: Path, atlas_sha: str, env: Environment,
+    conn: sqlite3.Connection,
+    out_dir: Path,
+    atlas_sha: str,
+    env: Environment,
 ) -> int:
     template = env.from_string(MAPPER_TEMPLATE)
     count = 0
@@ -210,10 +216,18 @@ def _render_mappers(
 
     for row in mappers:
         m = {
-            "id": row[0], "fqn": row[1], "kind": row[2], "pair_id": row[3],
-            "repo_id": row[4], "file": row[5], "sha": row[6], "browse_url": row[7],
-            "scope_common": bool(row[8]), "scope_country": row[9],
-            "scope_clearing": row[10], "scope_product": row[11],
+            "id": row[0],
+            "fqn": row[1],
+            "kind": row[2],
+            "pair_id": row[3],
+            "repo_id": row[4],
+            "file": row[5],
+            "sha": row[6],
+            "browse_url": row[7],
+            "scope_common": bool(row[8]),
+            "scope_country": row[9],
+            "scope_clearing": row[10],
+            "scope_product": row[11],
         }
         edges = conn.execute(
             """
@@ -228,13 +242,25 @@ def _render_mappers(
             (m["id"],),
         ).fetchall()
         edge_dicts = [
-            {"id": e[0], "kind": e[1], "expression": (e[2] or "")[:60],
-             "line": e[3], "browse_url": e[4], "source_path": e[5], "target_path": e[6]}
+            {
+                "id": e[0],
+                "kind": e[1],
+                "expression": (e[2] or "")[:60],
+                "line": e[3],
+                "browse_url": e[4],
+                "source_path": e[5],
+                "target_path": e[6],
+            }
             for e in edges
         ]
         body = template.render(atlas_sha=atlas_sha, mapper=m, edges=edge_dicts)
-        path = out_dir / "services" / m["repo_id"] / m["pair_id"] / "mappers" / (
-            m["fqn"].rsplit(".", 1)[-1] + ".md"
+        path = (
+            out_dir
+            / "services"
+            / m["repo_id"]
+            / m["pair_id"]
+            / "mappers"
+            / (m["fqn"].rsplit(".", 1)[-1] + ".md")
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(body, encoding="utf-8")
@@ -248,7 +274,10 @@ def _render_mappers(
 
 
 def _render_entry_points(
-    conn: sqlite3.Connection, out_dir: Path, atlas_sha: str, env: Environment,
+    conn: sqlite3.Connection,
+    out_dir: Path,
+    atlas_sha: str,
+    env: Environment,
 ) -> tuple[int, int]:
     """Render one ``.md`` per entry-point + a top-level index. Helper bodies
     are inlined verbatim (deduplicated by FQN, line-anchored) so a Business
@@ -272,7 +301,10 @@ def _render_entry_points(
         helpers = _load_helpers_for_ep(conn, ep["id"], edges)
 
         body = ep_template.render(
-            atlas_sha=atlas_sha, ep=ep, edges=edges, helpers=helpers,
+            atlas_sha=atlas_sha,
+            ep=ep,
+            edges=edges,
+            helpers=helpers,
         )
         rel_dir = Path("services") / ep["repo_id"] / ep["pair_id"] / "entry-points"
         filename = _entry_point_filename(ep)
@@ -281,27 +313,31 @@ def _render_entry_points(
         path.write_text(body, encoding="utf-8")
         count += 1
 
-        index_entries.append({
-            "country": ep["scope_country"] or "COMMON",
-            "clearing": ep["scope_clearing"] or "COMMON",
-            "product": ep["scope_product"] or "COMMON",
-            "class_short": ep["class_fqn"].rsplit(".", 1)[-1],
-            "method_name": ep["method_name"],
-            "sources_short": ", ".join(ep["source_schema_ids"]),
-            "target_schema_id": ep["target_schema_id"],
-            "edge_count": ep["edge_count"],
-            "resolution_percent": ep["resolution_percent"],
-            "line": ep["line"],
-            "browse_url": ep["browse_url"],
-            "rel_path": (Path("..") / rel_dir / filename).as_posix(),
-        })
+        index_entries.append(
+            {
+                "country": ep["scope_country"] or "COMMON",
+                "clearing": ep["scope_clearing"] or "COMMON",
+                "product": ep["scope_product"] or "COMMON",
+                "class_short": ep["class_fqn"].rsplit(".", 1)[-1],
+                "method_name": ep["method_name"],
+                "sources_short": ", ".join(ep["source_schema_ids"]),
+                "target_schema_id": ep["target_schema_id"],
+                "edge_count": ep["edge_count"],
+                "resolution_percent": ep["resolution_percent"],
+                "line": ep["line"],
+                "browse_url": ep["browse_url"],
+                "rel_path": (Path("..") / rel_dir / filename).as_posix(),
+            }
+        )
 
     if not index_entries:
         return count, 0
 
     groups = _group_index(index_entries)
     index_body = index_template.render(
-        atlas_sha=atlas_sha, entry_points=index_entries, groups=groups,
+        atlas_sha=atlas_sha,
+        entry_points=index_entries,
+        groups=groups,
     )
     index_path = out_dir / "entry-points" / "index.md"
     index_path.parent.mkdir(parents=True, exist_ok=True)
@@ -311,21 +347,31 @@ def _render_entry_points(
 
 def _entry_point_dict(row: tuple[Any, ...]) -> dict[str, Any]:
     return {
-        "id": row[0], "pair_id": row[1], "repo_id": row[2],
-        "class_fqn": row[3], "method_name": row[4],
+        "id": row[0],
+        "pair_id": row[1],
+        "repo_id": row[2],
+        "class_fqn": row[3],
+        "method_name": row[4],
         "method_signature": row[5],
         "source_schema_ids": json.loads(row[6]) if row[6] else [],
-        "target_schema_id": row[7], "file": row[8], "line": row[9],
-        "sha": row[10], "browse_url": row[11],
+        "target_schema_id": row[7],
+        "file": row[8],
+        "line": row[9],
+        "sha": row[10],
+        "browse_url": row[11],
         "scope_common": bool(row[12]),
-        "scope_country": row[13], "scope_clearing": row[14],
-        "scope_product": row[15], "scope_field_group": row[16],
-        "edge_count": row[17], "resolution_percent": row[18],
+        "scope_country": row[13],
+        "scope_clearing": row[14],
+        "scope_product": row[15],
+        "scope_field_group": row[16],
+        "edge_count": row[17],
+        "resolution_percent": row[18],
     }
 
 
 def _load_edges_for_ep(
-    conn: sqlite3.Connection, entry_point_id: str,
+    conn: sqlite3.Connection,
+    entry_point_id: str,
 ) -> list[dict[str, Any]]:
     rows = conn.execute(
         """SELECT e.id, e.kind, e.expression, e.line, e.browse_url,
@@ -340,17 +386,24 @@ def _load_edges_for_ep(
     ).fetchall()
     out: list[dict[str, Any]] = []
     for r in rows:
-        expression = (r[2] or "")
-        out.append({
-            "id": r[0], "kind": r[1], "expression": expression[:80],
-            "line": r[3], "browse_url": r[4], "static_helper_fqn": r[5],
-            "source_path": r[6], "target_path": r[7],
-            # BA-facing column: when the resolver landed on a real schema
-            # path show that; otherwise surface the literal expression so
-            # constant / construction / format / expression rows are
-            # readable instead of opaque ``_(constant)_`` placeholders.
-            "display_source": _display_source(r[6], expression),
-        })
+        expression = r[2] or ""
+        out.append(
+            {
+                "id": r[0],
+                "kind": r[1],
+                "expression": expression[:80],
+                "line": r[3],
+                "browse_url": r[4],
+                "static_helper_fqn": r[5],
+                "source_path": r[6],
+                "target_path": r[7],
+                # BA-facing column: when the resolver landed on a real schema
+                # path show that; otherwise surface the literal expression so
+                # constant / construction / format / expression rows are
+                # readable instead of opaque ``_(constant)_`` placeholders.
+                "display_source": _display_source(r[6], expression),
+            }
+        )
     return out
 
 
@@ -396,8 +449,12 @@ def _load_helpers_for_ep(
         fqn = r[0]
         if fqn not in by_fqn:
             by_fqn[fqn] = {
-                "fqn": fqn, "file": r[3], "start_line": r[4],
-                "end_line": r[5], "signature": r[6], "body": r[7],
+                "fqn": fqn,
+                "file": r[3],
+                "start_line": r[4],
+                "end_line": r[5],
+                "signature": r[6],
+                "body": r[7],
                 "used_by": [],
             }
         edge = edges_by_id.get(r[1])
@@ -442,15 +499,19 @@ def _group_index(entries: list[dict[str, Any]]) -> list[dict[str, Any]]:
         key = (e["country"], e["clearing"], e["product"])
         groups.setdefault(key, []).append(e)
     out: list[dict[str, Any]] = []
-    for (country, clearing, product) in sorted(groups.keys()):
+    for country, clearing, product in sorted(groups.keys()):
         items = sorted(
             groups[(country, clearing, product)],
             key=lambda x: (x["class_short"], x["method_name"]),
         )
-        out.append({
-            "country": country, "clearing": clearing, "product": product,
-            "entry_points": items,
-        })
+        out.append(
+            {
+                "country": country,
+                "clearing": clearing,
+                "product": product,
+                "entry_points": items,
+            }
+        )
     return out
 
 
@@ -468,11 +529,17 @@ def _render_jsonld(conn: sqlite3.Connection, out_dir: Path) -> int:
             "SELECT id, fqn, kind, pair_id, file, browse_url FROM mapper WHERE repo_id = ?",
             (svc,),
         ):
-            nodes.append({
-                "@id": f"mapper:{row[0]}", "@type": "Mapper",
-                "fqn": row[1], "kind": row[2], "pair": row[3],
-                "file": row[4], "browse_url": row[5],
-            })
+            nodes.append(
+                {
+                    "@id": f"mapper:{row[0]}",
+                    "@type": "Mapper",
+                    "fqn": row[1],
+                    "kind": row[2],
+                    "pair": row[3],
+                    "file": row[4],
+                    "browse_url": row[5],
+                }
+            )
         for row in conn.execute(
             """
             SELECT e.id, e.pair_id, e.mapper_id, e.kind, e.expression, e.line, e.browse_url,
@@ -485,21 +552,30 @@ def _render_jsonld(conn: sqlite3.Connection, out_dir: Path) -> int:
             """,
             (svc,),
         ):
-            nodes.append({
-                "@id": f"edge:{row[0]}", "@type": "Edge",
-                "pair": row[1], "mapper": f"mapper:{row[2]}",
-                "kind": row[3], "expression": row[4], "line": row[5],
-                "browse_url": row[6], "source": row[7], "target": row[8],
-                "entry_point": (f"entry_point:{row[9]}" if row[9] else None),
-            })
+            nodes.append(
+                {
+                    "@id": f"edge:{row[0]}",
+                    "@type": "Edge",
+                    "pair": row[1],
+                    "mapper": f"mapper:{row[2]}",
+                    "kind": row[3],
+                    "expression": row[4],
+                    "line": row[5],
+                    "browse_url": row[6],
+                    "source": row[7],
+                    "target": row[8],
+                    "entry_point": (f"entry_point:{row[9]}" if row[9] else None),
+                }
+            )
         doc = {
             "@context": {"@vocab": "https://atlas.x/v1/"},
             "@graph": sorted(nodes, key=lambda d: d["@id"]),
         }
         out = out_dir / "services" / svc / "graph.jsonld"
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(doc, sort_keys=True, indent=2, ensure_ascii=False) + "\n",
-                       encoding="utf-8")
+        out.write_text(
+            json.dumps(doc, sort_keys=True, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+        )
         count += 1
     return count
 

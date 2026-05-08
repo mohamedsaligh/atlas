@@ -46,7 +46,7 @@ class Pair(BaseModel):
     targets: list[SchemaRef] = Field(default_factory=list)
     scan_globs: list[str]
     scope_rules: list[ScopeRule] = Field(default_factory=list)
-    resolvers: ResolverConfig | None = None       # forward ref; defined below
+    resolvers: ResolverConfig | None = None  # forward ref; defined below
     # Single-form alias kept for spec compatibility (§4); we promote to lists.
     source: SchemaRef | None = None
     target: SchemaRef | None = None
@@ -156,7 +156,10 @@ def _autodetect(raw: dict[str, Any], base: Path) -> dict[str, Any]:
                 cand = root / repo["id"]
                 if cand.is_dir():
                     repo["path"] = str(cand)
-                    print(f"[atlas-config] autodetected repos[{repo['id']}].path = {cand}", file=sys.stderr)
+                    print(
+                        f"[atlas-config] autodetected repos[{repo['id']}].path = {cand}",
+                        file=sys.stderr,
+                    )
                     break
         # Resolve ~/ in paths
         repo["path"] = os.path.expanduser(repo["path"]) if "path" in repo else repo.get("path")
@@ -164,19 +167,33 @@ def _autodetect(raw: dict[str, Any], base: Path) -> dict[str, Any]:
         if not repo.get("project"):
             git_cfg = Path(repo["path"]) / ".git" / "config" if "path" in repo else None
             if git_cfg and git_cfg.exists():
-                m = re.search(r"\[remote \"origin\"\]\s*\n[^\[]*url\s*=\s*([^\n]+)", git_cfg.read_text())
+                m = re.search(
+                    r"\[remote \"origin\"\]\s*\n[^\[]*url\s*=\s*([^\n]+)", git_cfg.read_text()
+                )
                 if m:
                     url = m.group(1).strip()
                     parts = re.split(r"[:/]", url.rstrip(".git"))
                     if len(parts) >= 2:
                         repo["project"] = parts[-2]
-                        print(f"[atlas-config] autodetected repos[{repo['id']}].project = {repo['project']}", file=sys.stderr)
+                        print(
+                            f"[atlas-config] autodetected repos[{repo['id']}].project = {repo['project']}",
+                            file=sys.stderr,
+                        )
 
         if not repo.get("branch") and repo.get("path"):
             try:
                 out = subprocess.run(
-                    ["git", "-C", repo["path"], "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
-                    capture_output=True, text=True, timeout=5,
+                    [
+                        "git",
+                        "-C",
+                        repo["path"],
+                        "symbolic-ref",
+                        "--short",
+                        "refs/remotes/origin/HEAD",
+                    ],
+                    capture_output=True,
+                    text=True,
+                    timeout=5,
                 )
                 if out.returncode == 0:
                     repo["branch"] = out.stdout.strip().split("/")[-1] or "main"

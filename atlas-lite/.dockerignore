@@ -1,0 +1,34 @@
+# Source-controlled junk
+.git
+.gitignore
+.github
+
+# Local env
+.venv
+.env
+.envrc
+*.egg-info
+build
+dist
+
+# Caches
+__pycache__
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+coverage.xml
+htmlcov
+
+# Tests + examples kept out of the runtime image
+tests
+examples
+PLAN.md
+README.md
+docs
+
+# IDE
+.idea
+.vscode
+*.swp
+.DS_Store

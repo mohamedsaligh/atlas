@@ -45,22 +45,26 @@ def list_entry_points(
     where: list[str] = []
     args: list[object] = []
     if repo:
-        where.append("repo_id = ?"); args.append(repo)
+        where.append("repo_id = ?")
+        args.append(repo)
     if pair:
-        where.append("pair_id = ?"); args.append(pair)
+        where.append("pair_id = ?")
+        args.append(pair)
     if country:
-        where.append("scope_country = ?"); args.append(country)
+        where.append("scope_country = ?")
+        args.append(country)
     if clearing:
-        where.append("scope_clearing = ?"); args.append(clearing)
+        where.append("scope_clearing = ?")
+        args.append(clearing)
     if product:
-        where.append("scope_product = ?"); args.append(product)
+        where.append("scope_product = ?")
+        args.append(product)
     if class_fqn:
-        where.append("class_fqn = ?"); args.append(class_fqn)
+        where.append("class_fqn = ?")
+        args.append(class_fqn)
     where_sql = ("WHERE " + " AND ".join(where)) if where else ""
 
-    total = conn.execute(
-        f"SELECT COUNT(*) AS n FROM entry_point {where_sql}", args
-    ).fetchone()["n"]
+    total = conn.execute(f"SELECT COUNT(*) AS n FROM entry_point {where_sql}", args).fetchone()["n"]
 
     rows = conn.execute(
         f"""SELECT id, pair_id, repo_id, class_fqn, method_name, method_signature,
@@ -174,17 +178,24 @@ def list_entry_point_edges(
 
 def _to_summary(r: sqlite3.Row) -> EntryPointSummary:
     return EntryPointSummary(
-        id=r["id"], pair_id=r["pair_id"], repo_id=r["repo_id"],
-        class_fqn=r["class_fqn"], method_name=r["method_name"],
+        id=r["id"],
+        pair_id=r["pair_id"],
+        repo_id=r["repo_id"],
+        class_fqn=r["class_fqn"],
+        method_name=r["method_name"],
         method_signature=r["method_signature"],
         source_schema_ids=json.loads(r["source_schema_ids"]),
         target_schema_id=r["target_schema_id"],
-        file=r["file"], line=r["line"], sha=r["sha"],
+        file=r["file"],
+        line=r["line"],
+        sha=r["sha"],
         browse_url=r["browse_url"] or None,
         scope=Scope(
             common=bool(r["scope_common"]),
-            country=r["scope_country"], clearing=r["scope_clearing"],
-            product=r["scope_product"], field_group=r["scope_field_group"],
+            country=r["scope_country"],
+            clearing=r["scope_clearing"],
+            product=r["scope_product"],
+            field_group=r["scope_field_group"],
         ),
         edge_count=r["edge_count"],
         resolution_percent=r["resolution_percent"],
@@ -193,17 +204,26 @@ def _to_summary(r: sqlite3.Row) -> EntryPointSummary:
 
 def _edge(r: sqlite3.Row) -> EdgeRow:
     return EdgeRow(
-        id=r["id"], pair_id=r["pair_id"], mapper_id=r["mapper_id"],
-        entry_point_id=r["entry_point_id"], kind=r["kind"],
-        expression=r["expression"], static_helper_fqn=r["static_helper_fqn"],
-        source_schema_id=r["source_schema_id"], source_path=r["source_path"],
-        target_schema_id=r["target_schema_id"], target_path=r["target_path"],
-        file=r["file"], line=r["line"], browse_url=r["browse_url"] or None,
+        id=r["id"],
+        pair_id=r["pair_id"],
+        mapper_id=r["mapper_id"],
+        entry_point_id=r["entry_point_id"],
+        kind=r["kind"],
+        expression=r["expression"],
+        static_helper_fqn=r["static_helper_fqn"],
+        source_schema_id=r["source_schema_id"],
+        source_path=r["source_path"],
+        target_schema_id=r["target_schema_id"],
+        target_path=r["target_path"],
+        file=r["file"],
+        line=r["line"],
+        browse_url=r["browse_url"] or None,
     )
 
 
 def _load_helpers(
-    conn: sqlite3.Connection, edge_ids: list[str],
+    conn: sqlite3.Connection,
+    edge_ids: list[str],
 ) -> list[HelperBody]:
     placeholders = ",".join("?" * len(edge_ids))
     rows = conn.execute(
@@ -218,9 +238,13 @@ def _load_helpers(
     ).fetchall()
     return [
         HelperBody(
-            fqn=r["fqn"], file=r["file"], start_line=r["start_line"],
-            end_line=r["end_line"], signature=r["signature"],
-            body=r["body"], body_sha256=r["body_sha256"],
+            fqn=r["fqn"],
+            file=r["file"],
+            start_line=r["start_line"],
+            end_line=r["end_line"],
+            signature=r["signature"],
+            body=r["body"],
+            body_sha256=r["body_sha256"],
         )
         for r in rows
     ]

@@ -36,12 +36,26 @@ def _make_parser() -> tree_sitter.Parser:
 
 
 _SKIP_DIR_NAMES: set[str] = {
-    ".git", ".idea", ".vscode", ".gradle", ".settings",
-    "node_modules", "build", "out", "bin", "dist",
-    ".next", ".nuxt", ".cache",
+    ".git",
+    ".idea",
+    ".vscode",
+    ".gradle",
+    ".settings",
+    "node_modules",
+    "build",
+    "out",
+    "bin",
+    "dist",
+    ".next",
+    ".nuxt",
+    ".cache",
     # Inside a Maven `target/`, only generated-sources is interesting.
-    "classes", "test-classes", "dependency", "site",
-    "surefire-reports", "failsafe-reports",
+    "classes",
+    "test-classes",
+    "dependency",
+    "site",
+    "surefire-reports",
+    "failsafe-reports",
 }
 
 
@@ -56,12 +70,15 @@ class IndexedFile:
 @dataclass
 class JavaIndex:
     """Multi-file index of an entire repo (or set of repos)."""
+
     files: dict[str, IndexedFile] = field(default_factory=dict)
     class_to_file: dict[str, str] = field(default_factory=dict)
     methods_by_class: dict[str, dict[str, tree_sitter.Node]] = field(default_factory=dict)
     imports_by_file: dict[str, dict[str, str]] = field(default_factory=dict)
     field_types: dict[str, dict[str, str]] = field(default_factory=dict)
-    superclass_raw: dict[str, str] = field(default_factory=dict)  # FQN → super simple name (unresolved)
+    superclass_raw: dict[str, str] = field(
+        default_factory=dict
+    )  # FQN → super simple name (unresolved)
 
     def lookup_method(self, class_fqn: str, method_name: str) -> tree_sitter.Node | None:
         return self.methods_by_class.get(class_fqn, {}).get(method_name)
@@ -174,7 +191,10 @@ def build_index(
             fqn = f"{pkg}.{simple}" if pkg else simple
             # Inner classes get qualified with outer name.
             outer = cls.parent
-            while outer is not None and outer.type not in ("class_declaration", "interface_declaration"):
+            while outer is not None and outer.type not in (
+                "class_declaration",
+                "interface_declaration",
+            ):
                 outer = outer.parent
             if outer is not None:
                 outer_name_node = outer.child_by_field_name("name")
@@ -299,7 +319,7 @@ def _descendants_of_type(node: tree_sitter.Node, t: str) -> list[tree_sitter.Nod
 def _text(node: tree_sitter.Node | None, source: bytes) -> str:
     if node is None:
         return ""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
 def fnmatch_class(pattern: str, fqn: str) -> bool:

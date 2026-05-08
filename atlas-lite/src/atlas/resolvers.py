@@ -53,7 +53,7 @@ class ParamBinding:
 
 @dataclass(frozen=True)
 class Resolution:
-    kind: str           # direct | wrapper_arg | qualifier | static_call | intra_class
+    kind: str  # direct | wrapper_arg | qualifier | static_call | intra_class
     file: str
     line: int
     snippet: str
@@ -108,7 +108,9 @@ def resolve_source(
         visited = set()
     if depth > cfg.max_depth:
         return None
-    return _resolve(rhs, file_bytes, file_rel, bindings, index, cfg, depth, visited, locals_init or {})
+    return _resolve(
+        rhs, file_bytes, file_rel, bindings, index, cfg, depth, visited, locals_init or {}
+    )
 
 
 def _resolve(
@@ -126,10 +128,19 @@ def _resolve(
     t = rhs.type
 
     # ── literals / nulls ─────────────────────────────────────────────────────
-    if t in ("string_literal", "decimal_integer_literal", "hex_integer_literal",
-             "octal_integer_literal", "binary_integer_literal",
-             "decimal_floating_point_literal", "hex_floating_point_literal",
-             "true", "false", "null_literal", "character_literal"):
+    if t in (
+        "string_literal",
+        "decimal_integer_literal",
+        "hex_integer_literal",
+        "octal_integer_literal",
+        "binary_integer_literal",
+        "decimal_floating_point_literal",
+        "hex_floating_point_literal",
+        "true",
+        "false",
+        "null_literal",
+        "character_literal",
+    ):
         return None
 
     # ── identifier (a bare param) ────────────────────────────────────────────
@@ -145,7 +156,9 @@ def _resolve(
         # might trace back to a known parameter.
         init = locals_init.get(name)
         if init is not None:
-            return _resolve(init, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init)
+            return _resolve(
+                init, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init
+            )
         return None
 
     # ── field_access (already-dotted path) ──────────────────────────────────
@@ -154,7 +167,9 @@ def _resolve(
         field_node = rhs.child_by_field_name("field")
         if obj is None or field_node is None:
             return None
-        head = _resolve(obj, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init)
+        head = _resolve(
+            obj, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init
+        )
         if head is None:
             return None
         seg = _text(field_node, file_bytes)
@@ -162,14 +177,18 @@ def _resolve(
 
     # ── method_invocation: getter chain or wrapper or helper ────────────────
     if t == "method_invocation":
-        return _resolve_call(rhs, file_bytes, file_rel, bindings, index, cfg, depth, visited, locals_init)
+        return _resolve_call(
+            rhs, file_bytes, file_rel, bindings, index, cfg, depth, visited, locals_init
+        )
 
     # ── ternary: prefer then-branch, else-branch on miss ─────────────────────
     if t == "ternary_expression":
         for child_name in ("consequence", "alternative"):
             sub = rhs.child_by_field_name(child_name)
             if sub is not None:
-                m = _resolve(sub, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init)
+                m = _resolve(
+                    sub, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init
+                )
                 if m is not None:
                     return m
         return None
@@ -178,12 +197,16 @@ def _resolve(
     if t == "parenthesized_expression":
         for c in rhs.children:
             if c.is_named:
-                return _resolve(c, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init)
+                return _resolve(
+                    c, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init
+                )
         return None
     if t == "cast_expression":
         for c in rhs.children:
             if c.is_named and c.type not in ("type_identifier", "scoped_type_identifier"):
-                return _resolve(c, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init)
+                return _resolve(
+                    c, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init
+                )
         return None
 
     return None
@@ -207,7 +230,9 @@ def _resolve_call(
 
     # Step 1 — direct getter chain on a known param (fast path).
     if obj is not None and method_name.startswith("get"):
-        head = _resolve(obj, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init)
+        head = _resolve(
+            obj, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init
+        )
         if head is not None:
             fld = _getter_to_field(method_name)
             new_path = f"{head.path}.{fld}" if head.path else fld
@@ -215,16 +240,38 @@ def _resolve_call(
 
     # Step 2 — qualifier body recursion (instance method on a configured class).
     qual_match = _try_qualifier(
-        call, obj, name_node, args, method_name,
-        file_bytes, file_rel, bindings, index, cfg, depth, visited, locals_init,
+        call,
+        obj,
+        name_node,
+        args,
+        method_name,
+        file_bytes,
+        file_rel,
+        bindings,
+        index,
+        cfg,
+        depth,
+        visited,
+        locals_init,
     )
     if qual_match is not None:
         return qual_match
 
     # Step 3 — static helper body recursion.
     static_match = _try_static_helper(
-        call, obj, name_node, args, method_name,
-        file_bytes, file_rel, bindings, index, cfg, depth, visited, locals_init,
+        call,
+        obj,
+        name_node,
+        args,
+        method_name,
+        file_bytes,
+        file_rel,
+        bindings,
+        index,
+        cfg,
+        depth,
+        visited,
+        locals_init,
     )
     if static_match is not None:
         return static_match
@@ -232,8 +279,19 @@ def _resolve_call(
     # Step 4 — intra-class helper recursion (when configured + method lives in same file).
     if cfg.follow_intra_class:
         intra_match = _try_intra_class(
-            call, obj, name_node, args, method_name,
-            file_bytes, file_rel, bindings, index, cfg, depth, visited, locals_init,
+            call,
+            obj,
+            name_node,
+            args,
+            method_name,
+            file_bytes,
+            file_rel,
+            bindings,
+            index,
+            cfg,
+            depth,
+            visited,
+            locals_init,
         )
         if intra_match is not None:
             return intra_match
@@ -243,7 +301,9 @@ def _resolve_call(
         for arg in args.children:
             if not arg.is_named or arg.type in (",", "(", ")"):
                 continue
-            inner = _resolve(arg, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init)
+            inner = _resolve(
+                arg, file_bytes, file_rel, bindings, index, cfg, depth + 1, visited, locals_init
+            )
             if inner is not None:
                 step = Resolution(
                     kind="wrapper_arg",
@@ -303,8 +363,17 @@ def _try_qualifier(
         return None
 
     return _walk_helper_method(
-        helper, receiver_fqn, method_name, args,
-        file_bytes, file_rel, bindings, index, cfg, depth, visited | {cycle_key},
+        helper,
+        receiver_fqn,
+        method_name,
+        args,
+        file_bytes,
+        file_rel,
+        bindings,
+        index,
+        cfg,
+        depth,
+        visited | {cycle_key},
         kind="qualifier",
         call_node=call,
         caller_locals_init=locals_init,
@@ -353,8 +422,17 @@ def _try_static_helper(
         return None
 
     return _walk_helper_method(
-        helper, scope_fqn, method_name, args,
-        file_bytes, file_rel, bindings, index, cfg, depth, visited | {cycle_key},
+        helper,
+        scope_fqn,
+        method_name,
+        args,
+        file_bytes,
+        file_rel,
+        bindings,
+        index,
+        cfg,
+        depth,
+        visited | {cycle_key},
         kind="static_call",
         call_node=call,
         caller_locals_init=locals_init,
@@ -392,8 +470,17 @@ def _try_intra_class(
         return None
 
     return _walk_helper_method(
-        helper, enclosing_class, method_name, args,
-        file_bytes, file_rel, bindings, index, cfg, depth, visited | {cycle_key},
+        helper,
+        enclosing_class,
+        method_name,
+        args,
+        file_bytes,
+        file_rel,
+        bindings,
+        index,
+        cfg,
+        depth,
+        visited | {cycle_key},
         kind="intra_class",
         call_node=call,
         caller_locals_init=locals_init,
@@ -421,7 +508,9 @@ def _walk_helper_method(
     caller_locals_init: dict[str, tree_sitter.Node],
 ) -> SourceMatch | None:
     helper_fqn = f"{helper_class_fqn}.{helper_method_name}"
-    helper_file = index.class_to_file.get(helper_class_fqn) or index.class_to_file.get(helper_class_fqn.split("$", 1)[0])
+    helper_file = index.class_to_file.get(helper_class_fqn) or index.class_to_file.get(
+        helper_class_fqn.split("$", 1)[0]
+    )
     if helper_file is None:
         return None
     helper_indexed = index.files.get(helper_file)
@@ -433,9 +522,16 @@ def _walk_helper_method(
     # accumulated path prefix. Crucial for N-deep chains
     # (qualifier → static helper → param.getX().getY()).
     new_bindings = _alias_caller_bindings(
-        helper_params, caller_args,
-        caller_file_bytes, caller_file_rel, caller_bindings,
-        index, cfg, depth, visited, caller_locals_init,
+        helper_params,
+        caller_args,
+        caller_file_bytes,
+        caller_file_rel,
+        caller_bindings,
+        index,
+        cfg,
+        depth,
+        visited,
+        caller_locals_init,
     )
 
     body = helper.child_by_field_name("body")
@@ -470,7 +566,17 @@ def _walk_helper_method(
     for ret in _descendants_of_type(body, "return_statement"):
         for c in ret.children:
             if c.is_named:
-                inner = _resolve(c, helper_indexed.bytes, helper_file, new_bindings, index, cfg, depth + 1, visited, helper_locals)
+                inner = _resolve(
+                    c,
+                    helper_indexed.bytes,
+                    helper_file,
+                    new_bindings,
+                    index,
+                    cfg,
+                    depth + 1,
+                    visited,
+                    helper_locals,
+                )
                 if inner is not None:
                     return inner.with_step(_step())
                 break  # only inspect the first named child of the return statement
@@ -487,7 +593,17 @@ def _walk_helper_method(
         first = _first_arg(a)
         if first is None:
             continue
-        inner = _resolve(first, helper_indexed.bytes, helper_file, new_bindings, index, cfg, depth + 1, visited, helper_locals)
+        inner = _resolve(
+            first,
+            helper_indexed.bytes,
+            helper_file,
+            new_bindings,
+            index,
+            cfg,
+            depth + 1,
+            visited,
+            helper_locals,
+        )
         if inner is not None:
             return inner.with_step(_step())
 
@@ -504,7 +620,7 @@ def _helper_signature(method: tree_sitter.Node, file_bytes: bytes) -> str:
     if body is None:
         return _text(method, file_bytes).strip().rstrip(";")
     end = body.start_byte
-    return file_bytes[method.start_byte:end].decode("utf-8", errors="replace").strip()
+    return file_bytes[method.start_byte : end].decode("utf-8", errors="replace").strip()
 
 
 def _alias_caller_bindings(
@@ -537,8 +653,15 @@ def _alias_caller_bindings(
         own = helper_params[name]
         if i < len(arg_list):
             m = _resolve(
-                arg_list[i], caller_bytes, caller_file_rel, caller_bindings,
-                index, cfg, depth + 1, visited, caller_locals_init,
+                arg_list[i],
+                caller_bytes,
+                caller_file_rel,
+                caller_bindings,
+                index,
+                cfg,
+                depth + 1,
+                visited,
+                caller_locals_init,
             )
             if m is not None:
                 out[name] = ParamBinding(
@@ -553,7 +676,10 @@ def _alias_caller_bindings(
 
 
 def _parse_params(
-    method: tree_sitter.Node, file_bytes: bytes, file_rel: str, index: JavaIndex,
+    method: tree_sitter.Node,
+    file_bytes: bytes,
+    file_rel: str,
+    index: JavaIndex,
 ) -> dict[str, ParamBinding]:
     params_node = method.child_by_field_name("parameters")
     out: dict[str, ParamBinding] = {}
@@ -578,7 +704,10 @@ def _parse_params(
 
 
 def _enclosing_class_fqn(
-    node: tree_sitter.Node, file_bytes: bytes, file_rel: str, index: JavaIndex,
+    node: tree_sitter.Node,
+    file_bytes: bytes,
+    file_rel: str,
+    index: JavaIndex,
 ) -> str | None:
     n = node.parent
     while n is not None:

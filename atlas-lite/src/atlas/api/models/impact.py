@@ -11,6 +11,7 @@ class ImpactRow(BaseModel):
     """One affected (target field, mapper, entry-point) for a given
     source field change. The reverse-edge BFS produces a sequence of
     these grouped by scope on the rendering side."""
+
     model_config = ConfigDict(frozen=True)
 
     entry_point_id: str | None = None

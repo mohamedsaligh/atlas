@@ -9,12 +9,12 @@ import re
 from dataclasses import dataclass
 
 ATOM_PATTERNS = {
-    "edge_id":     re.compile(r"\b[a-z0-9-]+\.[a-z0-9_-]+\.e_[0-9a-f]{12}\b"),
-    "mapper_fqn":  re.compile(r"\b(?:[a-z][a-z0-9_]*\.)+[A-Z][A-Za-z0-9_]+\b"),
-    "file_path":   re.compile(r"\b(?:[\w-]+/)+[\w.-]+\.(?:java|json|xsd|yaml|md)\b"),
-    "url":         re.compile(r"\bhttps?://\S+\b"),
-    "sha":         re.compile(r"\b[0-9a-f]{7,40}\b"),
-    "field_path":  re.compile(r"`([a-zA-Z_][\w.]*)`"),
+    "edge_id": re.compile(r"\b[a-z0-9-]+\.[a-z0-9_-]+\.e_[0-9a-f]{12}\b"),
+    "mapper_fqn": re.compile(r"\b(?:[a-z][a-z0-9_]*\.)+[A-Z][A-Za-z0-9_]+\b"),
+    "file_path": re.compile(r"\b(?:[\w-]+/)+[\w.-]+\.(?:java|json|xsd|yaml|md)\b"),
+    "url": re.compile(r"\bhttps?://\S+\b"),
+    "sha": re.compile(r"\b[0-9a-f]{7,40}\b"),
+    "field_path": re.compile(r"`([a-zA-Z_][\w.]*)`"),
 }
 
 

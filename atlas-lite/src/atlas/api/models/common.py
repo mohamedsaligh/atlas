@@ -12,6 +12,7 @@ T = TypeVar("T")
 class Scope(BaseModel):
     """Routing dimensions on a mapper / entry-point. None means "applies
     to all values of this dimension" (i.e., the COMMON layer)."""
+
     model_config = ConfigDict(frozen=True)
 
     common: bool = False
@@ -23,6 +24,7 @@ class Scope(BaseModel):
 
 class Page(BaseModel, Generic[T]):
     """Standard pagination envelope. Stable shape across all list endpoints."""
+
     model_config = ConfigDict(frozen=True)
 
     items: list[T]
@@ -33,6 +35,7 @@ class Page(BaseModel, Generic[T]):
 
 class ProblemDetail(BaseModel):
     """RFC 7807 error envelope. Returned on 4xx / 5xx."""
+
     model_config = ConfigDict(frozen=True)
 
     type: str = "about:blank"

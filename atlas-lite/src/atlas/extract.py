@@ -86,7 +86,7 @@ def _parser() -> tree_sitter.Parser:
 
 @dataclass(frozen=True)
 class FieldRef:
-    schema_id: str           # canonical schema name (e.g. "SWIFT_MT103.xsd")
+    schema_id: str  # canonical schema name (e.g. "SWIFT_MT103.xsd")
     path: str
     business_key: str | None
     type_fqn: str | None
@@ -106,7 +106,7 @@ class Edge:
     pair_id: str
     mapper_id: str
     mapper_kind: str
-    kind: str                # rename | constant | format | expression | concat | static_call | enrichment | unmapped | qualifier
+    kind: str  # rename | constant | format | expression | concat | static_call | enrichment | unmapped | qualifier
     source: FieldRef | None
     target: FieldRef
     expression: str
@@ -143,6 +143,7 @@ class EntryPoint:
     Analyst reasons about; pivots Markdown, coverage, impact analysis, and the
     UI/graph onto methods rather than classes or files.
     """
+
     id: str
     pair_id: str
     repo_id: str
@@ -187,8 +188,11 @@ def run_extract(
 
     # Build a single repo-wide AST index. Used by the resolver chain to look up
     # qualifier classes, static helpers, and intra-class helpers across files.
-    repo_paths = [Path(os.path.expanduser(r.path)).resolve() for r in cfg.repos
-                  if (not repo_filter or r.id == repo_filter)]
+    repo_paths = [
+        Path(os.path.expanduser(r.path)).resolve()
+        for r in cfg.repos
+        if (not repo_filter or r.id == repo_filter)
+    ]
     index = build_index(repo_paths, verbose=verbose)
 
     # The resolver config is per-pair (or per-method-selector). Default to an
@@ -225,8 +229,16 @@ def run_extract(
                     file=sys.stderr,
                 )
             result = _run_pair_repo(
-                cfg, cfg_dir, pair, repo, sha, business_keys, file_timeout_s, verbose,
-                index=index, resolver_cfg=rcfg,
+                cfg,
+                cfg_dir,
+                pair,
+                repo,
+                sha,
+                business_keys,
+                file_timeout_s,
+                verbose,
+                index=index,
+                resolver_cfg=rcfg,
             )
             out[(repo.id, pair.id)] = result
     return out
@@ -256,8 +268,11 @@ def _run_pair_repo(
     extended_globs = _auto_extend_globs(pair.scan_globs)
     candidates = _scan_files(cfg_dir, extended_globs, repo_root)
     if verbose:
-        print(f"[atlas] scanned {len(candidates)} candidate(s) for pair={pair.id} "
-              f"(globs={len(extended_globs)})", file=sys.stderr)
+        print(
+            f"[atlas] scanned {len(candidates)} candidate(s) for pair={pair.id} "
+            f"(globs={len(extended_globs)})",
+            file=sys.stderr,
+        )
     result.files_scanned = len(candidates)
 
     sources = pair.effective_sources()
@@ -392,9 +407,7 @@ class FileWalker:
             return_type_node = _child_by_field(m, "type")
             return_type = _text(return_type_node, text) if return_type_node else ""
 
-            self._walk_method(
-                m, text, class_fqn, name, params, methods, "", imports, result, kind
-            )
+            self._walk_method(m, text, class_fqn, name, params, methods, "", imports, result, kind)
 
             # Assemble an EntryPoint iff this method actually emitted edges.
             # Tag every newly-emitted edge with the entry-point id.
@@ -404,39 +417,41 @@ class FileWalker:
                 for edge in result.edges[method_edges_before:]:
                     edge.entry_point_id = ep_id
                 method_line = m.start_point[0] + 1
-                source_schema_ids = sorted({
-                    p.schema_id for p in params.values() if p.schema_id
-                })
-                result.entry_points.append(EntryPoint(
-                    id=ep_id,
-                    pair_id=self.pair.id,
-                    repo_id=self.repo.id,
-                    class_fqn=class_fqn,
-                    method_name=name,
-                    method_signature=_method_signature(m, text),
-                    source_schema_ids=source_schema_ids,
-                    target_schema_id=self._schema_id_for_target(target_fqn_local),
-                    file=self.rel,
-                    line=method_line,
-                    sha=self.sha,
-                    browse_url=self._browse_url(method_line),
-                    scope=self.scope,
-                ))
+                source_schema_ids = sorted({p.schema_id for p in params.values() if p.schema_id})
+                result.entry_points.append(
+                    EntryPoint(
+                        id=ep_id,
+                        pair_id=self.pair.id,
+                        repo_id=self.repo.id,
+                        class_fqn=class_fqn,
+                        method_name=name,
+                        method_signature=_method_signature(m, text),
+                        source_schema_ids=source_schema_ids,
+                        target_schema_id=self._schema_id_for_target(target_fqn_local),
+                        file=self.rel,
+                        line=method_line,
+                        sha=self.sha,
+                        browse_url=self._browse_url(method_line),
+                        scope=self.scope,
+                    )
+                )
 
         # Only record the mapper if it actually emitted edges (drops phantom
         # interface entries that have no body — they're not mappers, just signatures).
         if len(result.edges) > class_edges_before:
             browse_url = self._browse_url(0)
-            result.mappers.append(MapperBlock(
-                fqn=class_fqn,
-                kind=kind,
-                pair_id=self.pair.id,
-                repo_id=self.repo.id,
-                file=self.rel,
-                sha=self.sha,
-                browse_url=browse_url,
-                scope=self.scope,
-            ))
+            result.mappers.append(
+                MapperBlock(
+                    fqn=class_fqn,
+                    kind=kind,
+                    pair_id=self.pair.id,
+                    repo_id=self.repo.id,
+                    file=self.rel,
+                    sha=self.sha,
+                    browse_url=browse_url,
+                    scope=self.scope,
+                )
+            )
 
     def _walk_method(
         self,
@@ -480,13 +495,35 @@ class FileWalker:
 
             if obj is not None and _text(obj, text) == target_var and name.startswith("set"):
                 self._handle_setter(
-                    call, text, target_var, target_fqn, name, args_node,
-                    params, helpers, path_prefix, imports, mapper_id, kind, result, line,
+                    call,
+                    text,
+                    target_var,
+                    target_fqn,
+                    name,
+                    args_node,
+                    params,
+                    helpers,
+                    path_prefix,
+                    imports,
+                    mapper_id,
+                    kind,
+                    result,
+                    line,
                 )
             elif args_node is not None and _arg_is_target_chain(args_node, text, target_var):
                 self._handle_enrichment(
-                    call, text, target_var, target_fqn, name, args_node,
-                    path_prefix, imports, mapper_id, kind, result, line,
+                    call,
+                    text,
+                    target_var,
+                    target_fqn,
+                    name,
+                    args_node,
+                    path_prefix,
+                    imports,
+                    mapper_id,
+                    kind,
+                    result,
+                    line,
                 )
 
     def _handle_setter(
@@ -529,15 +566,28 @@ class FileWalker:
                             helper_params, inner_args, text, params
                         )
                     self._walk_method(
-                        helper, text, mapper_id, helper_name, helper_params, helpers,
-                        full_path, imports, result, mapper_kind,
+                        helper,
+                        text,
+                        mapper_id,
+                        helper_name,
+                        helper_params,
+                        helpers,
+                        full_path,
+                        imports,
+                        result,
+                        mapper_kind,
                     )
                     return
 
         # Classify + resolve source via the new chain (qualifier / static / intra-class).
         kind = _classify(first_arg, text)
         match = resolve_source(
-            first_arg, text, self.rel, params, self.index, self.resolver_cfg,
+            first_arg,
+            text,
+            self.rel,
+            params,
+            self.index,
+            self.resolver_cfg,
             locals_init=getattr(self, "_method_locals", None),
         )
         static_helper_fqn = _extract_static_helper_fqn(first_arg, text, imports)
@@ -556,20 +606,22 @@ class FileWalker:
         if match is not None:
             source_field = self._field_ref_for_binding(match.binding, match.path)
 
-        result.edges.append(Edge(
-            pair_id=self.pair.id,
-            mapper_id=mapper_id,
-            mapper_kind=mapper_kind,
-            kind=kind,
-            source=source_field,
-            target=target_field,
-            expression=_text(first_arg, text),
-            static_helper_fqn=static_helper_fqn,
-            format_spec=None,
-            git=GitRef(self.repo.id, self.sha, self.rel, line, self._browse_url(line)),
-            scope=self.scope,
-            trail=trail,
-        ))
+        result.edges.append(
+            Edge(
+                pair_id=self.pair.id,
+                mapper_id=mapper_id,
+                mapper_kind=mapper_kind,
+                kind=kind,
+                source=source_field,
+                target=target_field,
+                expression=_text(first_arg, text),
+                static_helper_fqn=static_helper_fqn,
+                format_spec=None,
+                git=GitRef(self.repo.id, self.sha, self.rel, line, self._browse_url(line)),
+                scope=self.scope,
+                trail=trail,
+            )
+        )
 
     def _handle_enrichment(
         self,
@@ -590,30 +642,37 @@ class FileWalker:
         receiver = _text(obj, text) if obj is not None else "?"
         helper_fqn = imports.get(receiver, receiver) + "." + method_name
 
-        for arg in _children_of_type(args_node, "method_invocation") + _children_of_type(args_node, "field_access"):
+        for arg in _children_of_type(args_node, "method_invocation") + _children_of_type(
+            args_node, "field_access"
+        ):
             chain = _path_from_target_chain(arg, text, target_var)
             if not chain:
                 continue
             full_path = f"{path_prefix}.{chain}" if path_prefix else chain
             target_field = self._field_ref(target_fqn, full_path, self.default_target)
-            result.edges.append(Edge(
-                pair_id=self.pair.id,
-                mapper_id=mapper_id,
-                mapper_kind=mapper_kind,
-                kind="enrichment",
-                source=None,
-                target=target_field,
-                expression=_text(call, text),
-                static_helper_fqn=helper_fqn,
-                format_spec=None,
-                git=GitRef(self.repo.id, self.sha, self.rel, line, self._browse_url(line)),
-                scope=self.scope,
-            ))
+            result.edges.append(
+                Edge(
+                    pair_id=self.pair.id,
+                    mapper_id=mapper_id,
+                    mapper_kind=mapper_kind,
+                    kind="enrichment",
+                    source=None,
+                    target=target_field,
+                    expression=_text(call, text),
+                    static_helper_fqn=helper_fqn,
+                    format_spec=None,
+                    git=GitRef(self.repo.id, self.sha, self.rel, line, self._browse_url(line)),
+                    scope=self.scope,
+                )
+            )
 
     # ── helpers ──
 
     def _classify_class(self, text: bytes, class_fqn: str) -> str:
-        if "/target/generated-sources/" in self.rel and b"org.mapstruct.ap.MappingProcessor" in text:
+        if (
+            "/target/generated-sources/" in self.rel
+            and b"org.mapstruct.ap.MappingProcessor" in text
+        ):
             return "mapstruct-impl"
         if b"@Mapper" in text:
             return "mapstruct-interface"
@@ -653,10 +712,7 @@ class FileWalker:
         # Sibling-method recursion: alias each helper param to the caller's
         # binding when the arg is a bare identifier. Preserves the caller's
         # path_prefix so chains stay traceable across sibling-method hops.
-        args_list = [
-            c for c in inner_args.children
-            if c.type not in (",", "(", ")") and c.is_named
-        ]
+        args_list = [c for c in inner_args.children if c.type not in (",", "(", ")") and c.is_named]
         out: dict[str, ParamBinding] = {}
         helper_names = list(helper_params.keys())
         for i, name in enumerate(helper_names):
@@ -698,17 +754,14 @@ class FileWalker:
     def _field_ref(self, type_fqn: str, path: str, default_ref: SchemaRef) -> FieldRef:
         ref = self.fqn_to_target.get(type_fqn, default_ref)
         schema_id = Path(ref.file).name
-        bk = (self.business_keys.get(ref.file, {}).get(path)
-              or FieldAttrs()).business_key
+        bk = (self.business_keys.get(ref.file, {}).get(path) or FieldAttrs()).business_key
         return FieldRef(schema_id=schema_id, path=path, business_key=bk, type_fqn=type_fqn)
 
     def _field_ref_for_binding(self, binding: ParamBinding, path: str) -> FieldRef:
         ref = self.fqn_to_source.get(binding.type_fqn, self.default_source)
         schema_id = Path(ref.file).name
-        bk = (self.business_keys.get(ref.file, {}).get(path)
-              or FieldAttrs()).business_key
-        return FieldRef(schema_id=schema_id, path=path, business_key=bk,
-                        type_fqn=binding.type_fqn)
+        bk = (self.business_keys.get(ref.file, {}).get(path) or FieldAttrs()).business_key
+        return FieldRef(schema_id=schema_id, path=path, business_key=bk, type_fqn=binding.type_fqn)
 
     def _browse_url(self, line: int) -> str:
         if not self.browse_template:
@@ -756,7 +809,7 @@ class FileWalker:
 def _text(node: tree_sitter.Node | None, source: bytes) -> str:
     if node is None:
         return ""
-    return source[node.start_byte:node.end_byte].decode("utf-8", errors="replace")
+    return source[node.start_byte : node.end_byte].decode("utf-8", errors="replace")
 
 
 def _child_by_field(node: tree_sitter.Node, name: str) -> tree_sitter.Node | None:
@@ -793,7 +846,7 @@ def _method_signature(method: tree_sitter.Node, text: bytes) -> str:
     body = _child_by_field(method, "body")
     if body is None:
         return _text(method, text).strip().rstrip(";")
-    sig = text[method.start_byte:body.start_byte].decode("utf-8", errors="replace")
+    sig = text[method.start_byte : body.start_byte].decode("utf-8", errors="replace")
     return " ".join(sig.split()).strip()
 
 
@@ -804,10 +857,19 @@ def _method_signature(method: tree_sitter.Node, text: bytes) -> str:
 
 def _classify(node: tree_sitter.Node, text: bytes) -> str:
     t = node.type
-    if t in ("string_literal", "decimal_integer_literal", "hex_integer_literal",
-             "octal_integer_literal", "binary_integer_literal",
-             "decimal_floating_point_literal", "hex_floating_point_literal",
-             "true", "false", "null_literal", "character_literal"):
+    if t in (
+        "string_literal",
+        "decimal_integer_literal",
+        "hex_integer_literal",
+        "octal_integer_literal",
+        "binary_integer_literal",
+        "decimal_floating_point_literal",
+        "hex_floating_point_literal",
+        "true",
+        "false",
+        "null_literal",
+        "character_literal",
+    ):
         return "constant"
     if t == "object_creation_expression":
         return "construction"
@@ -840,10 +902,18 @@ def _extract_source(
     method-invocation arguments when the call itself doesn't ground in a param
     (qualifier wrapper recovery)."""
     t = node.type
-    if t in ("string_literal", "decimal_integer_literal", "hex_integer_literal",
-             "octal_integer_literal", "binary_integer_literal",
-             "decimal_floating_point_literal", "true", "false",
-             "null_literal", "character_literal"):
+    if t in (
+        "string_literal",
+        "decimal_integer_literal",
+        "hex_integer_literal",
+        "octal_integer_literal",
+        "binary_integer_literal",
+        "decimal_floating_point_literal",
+        "true",
+        "false",
+        "null_literal",
+        "character_literal",
+    ):
         return None
 
     if t == "identifier":
@@ -998,8 +1068,10 @@ def _path_from_target_chain(node: tree_sitter.Node, text: bytes, target_var: str
         field_node = _child_by_field(node, "field")
         if obj is None or field_node is None:
             return ""
-        head = _path_from_target_chain(obj, text, target_var) if obj.type != "identifier" else (
-            "" if _text(obj, text) != target_var else ""
+        head = (
+            _path_from_target_chain(obj, text, target_var)
+            if obj.type != "identifier"
+            else ("" if _text(obj, text) != target_var else "")
         )
         if obj.type == "identifier":
             if _text(obj, text) == target_var:
@@ -1129,7 +1201,9 @@ def _scan_files(cfg_dir: Path, globs: list[str], repo_root: Path) -> list[Path]:
     patterns = [_glob_to_regex(g) for g in globs]
     hits: list[Path] = []
     for root, dirs, files in os.walk(repo_root):
-        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS or d == "target"]  # keep target/generated-sources
+        dirs[:] = [
+            d for d in dirs if d not in _SKIP_DIRS or d == "target"
+        ]  # keep target/generated-sources
         for f in files:
             if not f.endswith(".java"):
                 continue
@@ -1250,7 +1324,9 @@ def _git_sha(repo_path: str) -> str:
     try:
         out = subprocess.run(
             ["git", "-C", os.path.expanduser(repo_path), "rev-parse", "HEAD"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         if out.returncode == 0:
             return out.stdout.strip()
@@ -1274,9 +1350,13 @@ def _rel_to_repo(file: Path, repo_root: Path) -> str:
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def compute_atlas_sha(cfg: AtlasConfig, cfg_dir: Path, results: dict[tuple[str, str], ExtractResult]) -> str:
-    inputs: list[Any] = [("extractor_version", ATLAS_VERSION),
-                          ("tree_sitter_java_version", TS_JAVA_VERSION)]
+def compute_atlas_sha(
+    cfg: AtlasConfig, cfg_dir: Path, results: dict[tuple[str, str], ExtractResult]
+) -> str:
+    inputs: list[Any] = [
+        ("extractor_version", ATLAS_VERSION),
+        ("tree_sitter_java_version", TS_JAVA_VERSION),
+    ]
     for repo in cfg.repos:
         inputs.append(("repo", repo.id, _git_sha(repo.path)))
     for pair in cfg.pairs:
@@ -1322,7 +1402,8 @@ def _populate_coverage(
         if denom == 0:
             continue
         covered_paths = {
-            r[0] for r in cur.execute(
+            r[0]
+            for r in cur.execute(
                 """SELECT DISTINCT tf.path
                    FROM edge e JOIN field tf ON e.target_field_id = tf.id
                    JOIN mapper m ON e.mapper_id = m.id
@@ -1361,14 +1442,13 @@ def _populate_coverage(
 
 
 def _target_leaves(
-    pair: Pair, business_keys: dict[str, dict[str, FieldAttrs]],
+    pair: Pair,
+    business_keys: dict[str, dict[str, FieldAttrs]],
 ) -> set[str]:
     out: set[str] = set()
     for tgt in pair.effective_targets():
         out.update(business_keys.get(tgt.file, {}).keys())
     return out
-
-
 
 
 def persist(
@@ -1384,14 +1464,18 @@ def persist(
     for repo in cfg.repos:
         sha = _git_sha(repo.path)
         browse = (cfg.bitbucket and cfg.bitbucket.browse_template) or ""
-        cur.execute("INSERT OR REPLACE INTO repo VALUES (?, ?, ?, ?, ?)",
-                    (repo.id, repo.project, repo.branch or "main", sha, browse))
+        cur.execute(
+            "INSERT OR REPLACE INTO repo VALUES (?, ?, ?, ?, ?)",
+            (repo.id, repo.project, repo.branch or "main", sha, browse),
+        )
     # schema + field
     for pair in cfg.pairs:
         for ref in [*pair.effective_sources(), *pair.effective_targets()]:
             schema_id = Path(ref.file).name
-            cur.execute("INSERT OR REPLACE INTO schema VALUES (?, ?, ?, ?)",
-                        (schema_id, ref.name, ref.kind, ref.file))
+            cur.execute(
+                "INSERT OR REPLACE INTO schema VALUES (?, ?, ?, ?)",
+                (schema_id, ref.name, ref.kind, ref.file),
+            )
             for path, attrs in business_keys.get(ref.file, {}).items():
                 fid = f"{schema_id}#{path}"
                 cur.execute(
@@ -1419,10 +1503,21 @@ def persist(
         for m in res.mappers:
             cur.execute(
                 "INSERT OR REPLACE INTO mapper VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (m.fqn, m.fqn, m.kind, m.pair_id, m.repo_id, m.file, m.sha, m.browse_url,
-                 1 if m.scope.get("common") else 0,
-                 m.scope.get("country"), m.scope.get("clearing"),
-                 m.scope.get("product"), m.scope.get("field_group")),
+                (
+                    m.fqn,
+                    m.fqn,
+                    m.kind,
+                    m.pair_id,
+                    m.repo_id,
+                    m.file,
+                    m.sha,
+                    m.browse_url,
+                    1 if m.scope.get("common") else 0,
+                    m.scope.get("country"),
+                    m.scope.get("clearing"),
+                    m.scope.get("product"),
+                    m.scope.get("field_group"),
+                ),
             )
             cur.execute(
                 "INSERT INTO mapper_fts (mapper_id, fqn, scope_text) VALUES (?, ?, ?)",
@@ -1438,14 +1533,27 @@ def persist(
                     scope_common, scope_country, scope_clearing, scope_product,
                     scope_field_group, edge_count, resolution_percent)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (ep.id, ep.pair_id, ep.repo_id, ep.class_fqn, ep.method_name,
-                 ep.method_signature,
-                 json.dumps(ep.source_schema_ids, sort_keys=True),
-                 ep.target_schema_id, ep.file, ep.line, ep.sha, ep.browse_url,
-                 1 if ep.scope.get("common") else 0,
-                 ep.scope.get("country"), ep.scope.get("clearing"),
-                 ep.scope.get("product"), ep.scope.get("field_group"),
-                 edges_per_ep.get(ep.id, 0), None),
+                (
+                    ep.id,
+                    ep.pair_id,
+                    ep.repo_id,
+                    ep.class_fqn,
+                    ep.method_name,
+                    ep.method_signature,
+                    json.dumps(ep.source_schema_ids, sort_keys=True),
+                    ep.target_schema_id,
+                    ep.file,
+                    ep.line,
+                    ep.sha,
+                    ep.browse_url,
+                    1 if ep.scope.get("common") else 0,
+                    ep.scope.get("country"),
+                    ep.scope.get("clearing"),
+                    ep.scope.get("product"),
+                    ep.scope.get("field_group"),
+                    edges_per_ep.get(ep.id, 0),
+                    None,
+                ),
             )
             entry_point_total += 1
 
@@ -1484,10 +1592,22 @@ def persist(
                     kind, expression, static_helper_fqn, format_spec_json,
                     file, line, sha, browse_url)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (eid, e.pair_id, e.mapper_id, e.entry_point_id, src_fid, tgt_fid,
-                 e.kind, e.expression, static_helper_fqn,
-                 json.dumps(e.format_spec, sort_keys=True) if e.format_spec else None,
-                 e.git.file, e.git.line, e.git.sha, e.git.browse_url),
+                (
+                    eid,
+                    e.pair_id,
+                    e.mapper_id,
+                    e.entry_point_id,
+                    src_fid,
+                    tgt_fid,
+                    e.kind,
+                    e.expression,
+                    static_helper_fqn,
+                    json.dumps(e.format_spec, sort_keys=True) if e.format_spec else None,
+                    e.git.file,
+                    e.git.line,
+                    e.git.sha,
+                    e.git.browse_url,
+                ),
             )
             cur.execute("DELETE FROM edge_resolution WHERE edge_id = ?", (eid,))
             for seq, step in enumerate(e.trail):
@@ -1496,20 +1616,21 @@ def persist(
                     (eid, seq, step.kind, step.file, step.line, step.snippet, step.helper_fqn),
                 )
                 # Dedupe helper bodies into the helper table — first non-null wins.
-                if (step.helper_fqn and step.helper_body
-                        and step.helper_fqn not in seen_helper_fqns):
+                if step.helper_fqn and step.helper_body and step.helper_fqn not in seen_helper_fqns:
                     body_sha = hashlib.sha256(step.helper_body.encode("utf-8")).hexdigest()
                     cur.execute(
                         """INSERT OR REPLACE INTO helper
                            (fqn, file, start_line, end_line, signature, body, body_sha256)
                            VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                        (step.helper_fqn,
-                         step.helper_file or "",
-                         step.helper_start_line or 0,
-                         step.helper_end_line or 0,
-                         step.helper_signature or "",
-                         step.helper_body,
-                         body_sha),
+                        (
+                            step.helper_fqn,
+                            step.helper_file or "",
+                            step.helper_start_line or 0,
+                            step.helper_end_line or 0,
+                            step.helper_signature or "",
+                            step.helper_body,
+                            body_sha,
+                        ),
                     )
                     seen_helper_fqns.add(step.helper_fqn)
             edge_total += 1
@@ -1518,8 +1639,15 @@ def persist(
                (repo_id, pair_id, files_scanned, mappers_detected, edges_emitted,
                 unparseable_json, unmatched_json, target_field_count, coverage_percent)
                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, NULL)""",
-            (repo_id, pair_id, res.files_scanned, len(res.mappers), len(res.edges),
-             json.dumps(res.unparseable, sort_keys=True), "[]"),
+            (
+                repo_id,
+                pair_id,
+                res.files_scanned,
+                len(res.mappers),
+                len(res.edges),
+                json.dumps(res.unparseable, sort_keys=True),
+                "[]",
+            ),
         )
 
     # Coverage % — pair-level and per-entry-point. The denominator is the
@@ -1532,8 +1660,15 @@ def persist(
     cur.execute("DELETE FROM snapshot")
     cur.execute(
         "INSERT INTO snapshot VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (atlas_sha, time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-         ATLAS_VERSION, edge_total, mapper_total, len(seen_field_ids), 0,
-         json.dumps({"checksum_ok": True}, sort_keys=True)),
+        (
+            atlas_sha,
+            time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            ATLAS_VERSION,
+            edge_total,
+            mapper_total,
+            len(seen_field_ids),
+            0,
+            json.dumps({"checksum_ok": True}, sort_keys=True),
+        ),
     )
     conn.commit()

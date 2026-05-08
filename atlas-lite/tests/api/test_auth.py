@@ -23,9 +23,7 @@ def test_disabled_mode_lets_everything_through(snapshot_db):
 
 
 def test_shared_secret_blocks_without_token(snapshot_db):
-    c = _client(snapshot_db,
-                auth_mode="shared_secret",
-                auth_shared_secret="dev-only-secret")
+    c = _client(snapshot_db, auth_mode="shared_secret", auth_shared_secret="dev-only-secret")
     r = c.get("/api/v1/coverage")
     assert r.status_code == 401
     assert r.headers.get("WWW-Authenticate") == "Bearer"
@@ -34,27 +32,21 @@ def test_shared_secret_blocks_without_token(snapshot_db):
 
 def test_shared_secret_admits_valid_token(snapshot_db):
     secret = "dev-only-secret"
-    c = _client(snapshot_db,
-                auth_mode="shared_secret",
-                auth_shared_secret=secret)
+    c = _client(snapshot_db, auth_mode="shared_secret", auth_shared_secret=secret)
     token = jwt.encode({"sub": "alice"}, secret, algorithm="HS256")
     r = c.get("/api/v1/coverage", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200
 
 
 def test_shared_secret_rejects_wrong_signature(snapshot_db):
-    c = _client(snapshot_db,
-                auth_mode="shared_secret",
-                auth_shared_secret="real-secret")
+    c = _client(snapshot_db, auth_mode="shared_secret", auth_shared_secret="real-secret")
     bad = jwt.encode({"sub": "alice"}, "wrong-secret", algorithm="HS256")
     r = c.get("/api/v1/coverage", headers={"Authorization": f"Bearer {bad}"})
     assert r.status_code == 401
 
 
 def test_health_remains_unauthenticated(snapshot_db):
-    c = _client(snapshot_db,
-                auth_mode="shared_secret",
-                auth_shared_secret="dev-only-secret")
+    c = _client(snapshot_db, auth_mode="shared_secret", auth_shared_secret="dev-only-secret")
     assert c.get("/api/v1/health").status_code == 200
     assert c.get("/api/v1/openapi.json").status_code == 200
 

@@ -29,6 +29,12 @@ cov-api:        ## Strict ≥85% coverage gate for atlas.api package
 		--cov=src/atlas/api --cov-report=term-missing \
 		--cov-fail-under=85
 
+sbom:           ## Generate CycloneDX SBOM for the installed environment
+	$(PYTHON) -m cyclonedx_py environment --output-file sbom.cdx.json
+
+docker:         ## Build the runtime container image
+	docker build -t atlas-lite:dev .
+
 check: lint typecheck cov cov-api  ## Lint + types + coverage gates (CI gate)
 
 all: install check  ## Install + run the full check pipeline

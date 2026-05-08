@@ -209,8 +209,8 @@ def _migrate(conn: sqlite3.Connection) -> None:
     ``--full`` after every schema bump.
     """
     additions: list[tuple[str, str, str]] = [
-        ("coverage",    "target_field_count", "INTEGER"),
-        ("coverage",    "coverage_percent",   "REAL"),
+        ("coverage", "target_field_count", "INTEGER"),
+        ("coverage", "coverage_percent", "REAL"),
         ("entry_point", "resolution_percent", "REAL"),
     ]
     for table, column, typ in additions:

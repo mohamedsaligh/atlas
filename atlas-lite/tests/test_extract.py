@@ -58,13 +58,19 @@ def test_determinism(tmp_path, monkeypatch):
     cfg_dir = CFG.parent.resolve()
     r1 = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
     r2 = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
-    assert _extract.compute_atlas_sha(cfg, cfg_dir, r1) == _extract.compute_atlas_sha(cfg, cfg_dir, r2)
+    assert _extract.compute_atlas_sha(cfg, cfg_dir, r1) == _extract.compute_atlas_sha(
+        cfg, cfg_dir, r2
+    )
 
     edges_1 = sorted(
-        (e.target.path, e.source.path if e.source else None, e.kind) for r in r1.values() for e in r.edges
+        (e.target.path, e.source.path if e.source else None, e.kind)
+        for r in r1.values()
+        for e in r.edges
     )
     edges_2 = sorted(
-        (e.target.path, e.source.path if e.source else None, e.kind) for r in r2.values() for e in r.edges
+        (e.target.path, e.source.path if e.source else None, e.kind)
+        for r in r2.values()
+        for e in r.edges
     )
     assert edges_1 == edges_2
 
@@ -152,9 +158,7 @@ def test_multihop_qualifier_to_static_helper_to_param_chain(tmp_path, monkeypatc
     assert "static_call" in trail_kinds
     assert "qualifier" in trail_kinds
     assert e.trail[-1].kind == "qualifier"
-    assert e.trail[-1].helper_fqn.endswith(
-        "QualifierDefinitions.getAgentCpa"
-    )
+    assert e.trail[-1].helper_fqn.endswith("QualifierDefinitions.getAgentCpa")
     inner_static = next(s for s in e.trail if s.kind == "static_call")
     assert inner_static.helper_fqn.endswith("MapperQualifierUtil.bicFromInst")
 
@@ -243,9 +247,7 @@ def test_coverage_populated(tmp_path, monkeypatch):
 
     # Per-EP resolution % — fraction of this EP's own edges that landed
     # on a real source schema path. Multihop has 1 edge, fully resolved.
-    ep_pcts = [r[0] for r in conn.execute(
-        "SELECT resolution_percent FROM entry_point"
-    ).fetchall()]
+    ep_pcts = [r[0] for r in conn.execute("SELECT resolution_percent FROM entry_point").fetchall()]
     assert ep_pcts == [100.0]
 
 
@@ -265,10 +267,9 @@ def test_pair_coverage_with_unmatched(tmp_path, monkeypatch):
     bk = _extract._build_business_keys(cfg, cfg_dir)
     # Inject a synthetic unwritten leaf into the target schema's
     # business_keys map. The mapper writes 4 of 5 leaves → 80% coverage.
-    target_file = next(
-        ref.file for pair in cfg.pairs for ref in pair.effective_targets()
-    )
+    target_file = next(ref.file for pair in cfg.pairs for ref in pair.effective_targets())
     from atlas.schemas import FieldAttrs
+
     bk[target_file]["unwrittenField"] = FieldAttrs(type_hint="string")
 
     results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
@@ -338,6 +339,7 @@ def test_drift_gate_baseline_and_check(tmp_path, monkeypatch):
     from typer.testing import CliRunner
 
     from atlas.cli import app
+
     runner = CliRunner()
 
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -354,8 +356,7 @@ def test_drift_gate_baseline_and_check(tmp_path, monkeypatch):
     conn.close()
 
     baseline_path = tmp_path / "baseline.json"
-    r = runner.invoke(app, ["baseline", "-c", str(multihop_cfg),
-                            "--out", str(baseline_path)])
+    r = runner.invoke(app, ["baseline", "-c", str(multihop_cfg), "--out", str(baseline_path)])
     assert r.exit_code == 0, r.output
     assert baseline_path.is_file()
     bdoc = json.loads(baseline_path.read_text(encoding="utf-8"))
@@ -365,8 +366,10 @@ def test_drift_gate_baseline_and_check(tmp_path, monkeypatch):
     assert bdoc["pairs"][pair_key]["coverage_percent"] == 100.0
 
     # Clean run: current matches baseline → exit 0.
-    r = runner.invoke(app, ["check", "-c", str(multihop_cfg),
-                            "--baseline", str(baseline_path), "--max-added", "0"])
+    r = runner.invoke(
+        app,
+        ["check", "-c", str(multihop_cfg), "--baseline", str(baseline_path), "--max-added", "0"],
+    )
     assert r.exit_code == 0, r.output
     assert "drift gate passed" in r.output
 
@@ -392,8 +395,10 @@ def test_drift_gate_baseline_and_check(tmp_path, monkeypatch):
     conn.commit()
     conn.close()
 
-    r = runner.invoke(app, ["check", "-c", str(multihop_cfg),
-                            "--baseline", str(baseline_path), "--max-added", "0"])
+    r = runner.invoke(
+        app,
+        ["check", "-c", str(multihop_cfg), "--baseline", str(baseline_path), "--max-added", "0"],
+    )
     assert r.exit_code == 1, r.output
     assert "drift gate failed" in r.output
     assert "agentBic" in r.output
@@ -408,6 +413,7 @@ def test_drift_gate_end_to_end_via_extract_path(tmp_path, monkeypatch):
 
     from atlas.cli import app
     from atlas.schemas import FieldAttrs
+
     runner = CliRunner()
 
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -438,9 +444,7 @@ def test_drift_gate_end_to_end_via_extract_path(tmp_path, monkeypatch):
     # gains "newField".
     conn = _db.open_db(db_path)
     _db.reset(conn)
-    target_file = next(
-        ref.file for pair in cfg.pairs for ref in pair.effective_targets()
-    )
+    target_file = next(ref.file for pair in cfg.pairs for ref in pair.effective_targets())
     bk2 = _extract._build_business_keys(cfg, cfg_dir)
     bk2[target_file]["newField"] = FieldAttrs(type_hint="string")
     results2 = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
@@ -449,16 +453,28 @@ def test_drift_gate_end_to_end_via_extract_path(tmp_path, monkeypatch):
     conn.close()
 
     # Stage 3: gate must fail and surface the new unmatched path.
-    r = runner.invoke(app, ["check", "-c", str(CFG),
-                            "--baseline", str(baseline_path), "--max-added", "0"])
+    r = runner.invoke(
+        app, ["check", "-c", str(CFG), "--baseline", str(baseline_path), "--max-added", "0"]
+    )
     assert r.exit_code == 1, r.output
     assert "drift gate failed" in r.output
     assert "newField" in r.output
 
     # Tolerance: setting --max-added 1 lets the regression through.
-    r = runner.invoke(app, ["check", "-c", str(CFG),
-                            "--baseline", str(baseline_path), "--max-added", "1",
-                            "--max-coverage-drop", "100.0"])
+    r = runner.invoke(
+        app,
+        [
+            "check",
+            "-c",
+            str(CFG),
+            "--baseline",
+            str(baseline_path),
+            "--max-added",
+            "1",
+            "--max-coverage-drop",
+            "100.0",
+        ],
+    )
     assert r.exit_code == 0, r.output
 
 
@@ -469,6 +485,7 @@ def test_drift_gate_rejects_unsupported_schema_version(tmp_path, monkeypatch):
     from typer.testing import CliRunner
 
     from atlas.cli import app
+
     runner = CliRunner()
 
     monkeypatch.setenv("HOME", str(tmp_path))

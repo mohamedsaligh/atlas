@@ -11,6 +11,7 @@ class HealthResponse(BaseModel):
     Surfaces enough state to be useful as a smoke check — clients can
     compare ``atlas_sha`` across deployments to detect drift.
     """
+
     model_config = ConfigDict(frozen=True)
 
     status: str
@@ -21,6 +22,7 @@ class HealthResponse(BaseModel):
 
 class SnapshotInfo(BaseModel):
     """Single-row summary of the loaded SQLite snapshot."""
+
     model_config = ConfigDict(frozen=True)
 
     atlas_sha: str

@@ -122,9 +122,7 @@ def validate_settings(settings: Settings) -> None:
             "Expected one of: disabled, shared_secret, oidc."
         )
     if settings.auth_mode == "shared_secret" and not settings.auth_shared_secret:
-        raise ValueError(
-            "auth_mode=shared_secret requires ATLAS_AUTH_SHARED_SECRET."
-        )
+        raise ValueError("auth_mode=shared_secret requires ATLAS_AUTH_SHARED_SECRET.")
     if settings.auth_mode == "oidc" and not settings.auth_oidc_issuer:
         raise ValueError("auth_mode=oidc requires ATLAS_AUTH_OIDC_ISSUER.")
 
@@ -149,7 +147,10 @@ def _http_get_json(url: str) -> dict[str, Any]:
 
 def _unauthorized(detail: str, instance: str) -> JSONResponse:
     body = ProblemDetail(
-        status=401, title="Unauthorized", detail=detail, instance=instance,
+        status=401,
+        title="Unauthorized",
+        detail=detail,
+        instance=instance,
     )
     return JSONResponse(
         status_code=401,

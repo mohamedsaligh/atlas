@@ -35,9 +35,15 @@ def test_metrics_endpoint_exposes_prom_text(client):
 
 def test_json_formatter_emits_valid_json():
     import logging
+
     rec = logging.LogRecord(
-        name="atlas.test", level=logging.INFO, pathname="x.py", lineno=1,
-        msg="hello %s", args=("world",), exc_info=None,
+        name="atlas.test",
+        level=logging.INFO,
+        pathname="x.py",
+        lineno=1,
+        msg="hello %s",
+        args=("world",),
+        exc_info=None,
     )
     out = JsonFormatter().format(rec)
     parsed = json.loads(out)
@@ -49,9 +55,15 @@ def test_json_formatter_emits_valid_json():
 
 def test_console_formatter_is_terse():
     import logging
+
     rec = logging.LogRecord(
-        name="atlas.test", level=logging.WARNING, pathname="x.py", lineno=1,
-        msg="boom", args=(), exc_info=None,
+        name="atlas.test",
+        level=logging.WARNING,
+        pathname="x.py",
+        lineno=1,
+        msg="boom",
+        args=(),
+        exc_info=None,
     )
     out = ConsoleFormatter().format(rec)
     assert "WARN" in out

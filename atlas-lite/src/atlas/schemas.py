@@ -44,6 +44,7 @@ def enumerate_fields(schema_file: Path, kind: str) -> dict[str, FieldAttrs]:
 
 # ── json-schema ──────────────────────────────────────────────────────────────
 
+
 def _enum_json_schema(file: Path) -> dict[str, FieldAttrs]:
     try:
         doc = json.loads(file.read_text(encoding="utf-8"))
@@ -61,7 +62,9 @@ def _walk_json(node: Any, path: str, out: dict[str, FieldAttrs]) -> None:
     if isinstance(props, dict) and props:
         if path and ("x-atlas-business-key" in node or node.get("x-atlas-ignore")):
             out[path] = FieldAttrs(
-                business_key=str(node["x-atlas-business-key"]) if "x-atlas-business-key" in node else None,
+                business_key=str(node["x-atlas-business-key"])
+                if "x-atlas-business-key" in node
+                else None,
                 ignored=bool(node.get("x-atlas-ignore", False)),
                 type_hint=node.get("type"),
             )
@@ -71,13 +74,16 @@ def _walk_json(node: Any, path: str, out: dict[str, FieldAttrs]) -> None:
         return
     if path:
         out[path] = FieldAttrs(
-            business_key=str(node["x-atlas-business-key"]) if "x-atlas-business-key" in node else None,
+            business_key=str(node["x-atlas-business-key"])
+            if "x-atlas-business-key" in node
+            else None,
             ignored=bool(node.get("x-atlas-ignore", False)),
             type_hint=node.get("type"),
         )
 
 
 # ── xsd ──────────────────────────────────────────────────────────────────────
+
 
 def _enum_xsd(file: Path) -> dict[str, FieldAttrs]:
     XS = "{http://www.w3.org/2001/XMLSchema}"
@@ -137,10 +143,30 @@ def _enum_xsd(file: Path) -> dict[str, FieldAttrs]:
 # ── java-class ───────────────────────────────────────────────────────────────
 
 _LEAF_PREFIXES = (
-    "java.", "Boolean", "Byte", "Character", "Short", "Integer", "Long",
-    "Float", "Double", "String", "Object", "Number", "BigDecimal", "BigInteger",
-    "LocalDate", "LocalDateTime", "LocalTime", "Date", "Instant", "OffsetDateTime",
-    "ZonedDateTime", "Duration", "Period", "UUID",
+    "java.",
+    "Boolean",
+    "Byte",
+    "Character",
+    "Short",
+    "Integer",
+    "Long",
+    "Float",
+    "Double",
+    "String",
+    "Object",
+    "Number",
+    "BigDecimal",
+    "BigInteger",
+    "LocalDate",
+    "LocalDateTime",
+    "LocalTime",
+    "Date",
+    "Instant",
+    "OffsetDateTime",
+    "ZonedDateTime",
+    "Duration",
+    "Period",
+    "UUID",
 )
 _PRIMITIVES = {"boolean", "byte", "char", "short", "int", "long", "float", "double", "void"}
 
@@ -208,7 +234,7 @@ def _extract_class_block(text: str, class_name: str) -> str | None:
         elif c == "}":
             depth -= 1
         i += 1
-    return text[start:i - 1] if depth == 0 else None
+    return text[start : i - 1] if depth == 0 else None
 
 
 def _strip_inner_classes(body: str) -> str:

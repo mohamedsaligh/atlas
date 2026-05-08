@@ -35,6 +35,7 @@ dev = [
     "types-pyyaml",
     "types-cachetools",
     "pre-commit>=4.0",
+    "cyclonedx-bom>=4.5",
 ]
 
 [project.scripts]

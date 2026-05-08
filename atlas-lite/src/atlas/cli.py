@@ -37,7 +37,9 @@ def extract(
     repo: str | None = typer.Option(None, "--repo", help="Restrict to one repo id"),
     full: bool = typer.Option(False, "--full", help="Drop and recreate the DB"),
     verbose: bool = typer.Option(False, "--verbose", "-v"),
-    file_timeout: float = typer.Option(60.0, "--file-timeout", help="Seconds before a file is marked unparseable"),
+    file_timeout: float = typer.Option(
+        60.0, "--file-timeout", help="Seconds before a file is marked unparseable"
+    ),
 ) -> None:
     """Walk every (repo, pair) combination and persist edges into SQLite."""
     cfg = _cfg.load_config(config)
@@ -51,9 +53,12 @@ def extract(
 
     business_keys = _extract._build_business_keys(cfg, cfg_dir)
     results = _extract.run_extract(
-        cfg, cfg_dir,
-        pair_filter=pair, repo_filter=repo,
-        file_timeout_s=file_timeout, verbose=verbose,
+        cfg,
+        cfg_dir,
+        pair_filter=pair,
+        repo_filter=repo,
+        file_timeout_s=file_timeout,
+        verbose=verbose,
     )
     atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
     _extract.persist(conn, cfg, cfg_dir, results, business_keys, atlas_sha)
@@ -110,17 +115,24 @@ def coverage(
     if repo:
         where.append("repo_id = ?")
         args.append(repo)
-    sql = ("SELECT repo_id, pair_id, target_field_count, "
-           "edges_emitted, coverage_percent, unmatched_json FROM coverage")
+    sql = (
+        "SELECT repo_id, pair_id, target_field_count, "
+        "edges_emitted, coverage_percent, unmatched_json FROM coverage"
+    )
     if where:
         sql += " WHERE " + " AND ".join(where)
     sql += " ORDER BY coverage_percent IS NULL, coverage_percent ASC, repo_id, pair_id"
     rows = conn.execute(sql, args).fetchall()
     if json_out:
         out = [
-            {"repo": r[0], "pair": r[1], "target_field_count": r[2],
-             "edges": r[3], "coverage_percent": r[4],
-             "unmatched": json.loads(r[5] or "[]")}
+            {
+                "repo": r[0],
+                "pair": r[1],
+                "target_field_count": r[2],
+                "edges": r[3],
+                "coverage_percent": r[4],
+                "unmatched": json.loads(r[5] or "[]"),
+            }
             for r in rows
         ]
         console.print_json(data=out)
@@ -143,7 +155,9 @@ def coverage(
 @app.command()
 def impact(
     config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False),
-    schema: str = typer.Option(..., "--schema", help="Source schema id (basename, e.g. Mt103.json)"),
+    schema: str = typer.Option(
+        ..., "--schema", help="Source schema id (basename, e.g. Mt103.json)"
+    ),
     path: str = typer.Option(..., "--path", help="Field path to trace (exact or subtree root)"),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
@@ -175,11 +189,15 @@ def impact(
                 "country": r[0] or "COMMON",
                 "clearing": r[1] or "COMMON",
                 "product": r[2] or "COMMON",
-                "class_fqn": r[3], "method_name": r[4],
+                "class_fqn": r[3],
+                "method_name": r[4],
                 "entry_point_id": r[5],
-                "kind": r[6], "line": r[7], "browse_url": r[8],
+                "kind": r[6],
+                "line": r[7],
+                "browse_url": r[8],
                 "helper": r[9],
-                "source_path": r[10], "target_path": r[11],
+                "source_path": r[10],
+                "target_path": r[11],
                 "target_schema": r[12],
             }
             for r in rows
@@ -192,14 +210,30 @@ def impact(
         return
 
     table = Table(title=f"Impact of changing {schema}:{path}", header_style="bold")
-    for col in ("country", "clearing", "product", "entry_point",
-                "source", "→", "target", "kind", "line"):
+    for col in (
+        "country",
+        "clearing",
+        "product",
+        "entry_point",
+        "source",
+        "→",
+        "target",
+        "kind",
+        "line",
+    ):
         table.add_column(col)
     for r in rows:
         ep_short = (r[3].rsplit(".", 1)[-1] + "." + r[4]) if r[3] else "(unknown)"
         table.add_row(
-            r[0] or "COMMON", r[1] or "COMMON", r[2] or "COMMON",
-            ep_short, r[10], "→", f"{r[12]}:{r[11]}", r[6], f"L{r[7]}",
+            r[0] or "COMMON",
+            r[1] or "COMMON",
+            r[2] or "COMMON",
+            ep_short,
+            r[10],
+            "→",
+            f"{r[12]}:{r[11]}",
+            r[6],
+            f"L{r[7]}",
         )
     console.print(table)
     console.print(f"[dim]{len(rows)} affected edges[/]")
@@ -208,7 +242,9 @@ def impact(
 @app.command()
 def baseline(
     config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False),
-    out: Path = typer.Option(Path("coverage-baseline.json"), "--out", help="Where to write the baseline"),
+    out: Path = typer.Option(
+        Path("coverage-baseline.json"), "--out", help="Where to write the baseline"
+    ),
 ) -> None:
     """Snapshot the current coverage state to a baseline file consumed by
     ``atlas check``. The baseline is the contract CI gates against — commit
@@ -244,10 +280,18 @@ def baseline(
 def check(
     config: Path = typer.Option(..., "--config", "-c", exists=True, dir_okay=False),
     baseline_path: Path = typer.Option(..., "--baseline", exists=True, dir_okay=False),
-    max_added: int = typer.Option(0, "--max-added", min=0,
-        help="Allowable count of newly-unmatched target paths per pair before the gate fires"),
-    max_coverage_drop: float = typer.Option(0.0, "--max-coverage-drop", min=0.0,
-        help="Allowable absolute coverage_percent drop (e.g. 0.5 → permit 99.5 → 99.0)"),
+    max_added: int = typer.Option(
+        0,
+        "--max-added",
+        min=0,
+        help="Allowable count of newly-unmatched target paths per pair before the gate fires",
+    ),
+    max_coverage_drop: float = typer.Option(
+        0.0,
+        "--max-coverage-drop",
+        min=0.0,
+        help="Allowable absolute coverage_percent drop (e.g. 0.5 → permit 99.5 → 99.0)",
+    ),
     json_out: bool = typer.Option(False, "--json"),
 ) -> None:
     """CI drift gate. Compare current pair-level coverage against a baseline.
@@ -277,8 +321,16 @@ def check(
     diff: list[dict] = []
     failed = False
     for key in sorted(set(current) | set(base_pairs)):
-        cur = current.get(key) or {"target_field_count": 0, "coverage_percent": None, "unmatched": []}
-        base = base_pairs.get(key) or {"target_field_count": 0, "coverage_percent": None, "unmatched": []}
+        cur = current.get(key) or {
+            "target_field_count": 0,
+            "coverage_percent": None,
+            "unmatched": [],
+        }
+        base = base_pairs.get(key) or {
+            "target_field_count": 0,
+            "coverage_percent": None,
+            "unmatched": [],
+        }
         added = sorted(set(cur["unmatched"]) - set(base["unmatched"]))
         removed = sorted(set(base["unmatched"]) - set(cur["unmatched"]))
         cur_pct = cur["coverage_percent"] if cur["coverage_percent"] is not None else 0.0
@@ -287,23 +339,27 @@ def check(
         regression = (len(added) > max_added) or (cov_drop > max_coverage_drop)
         if regression:
             failed = True
-        diff.append({
-            "pair": key,
-            "coverage_percent": cur["coverage_percent"],
-            "baseline_coverage_percent": base["coverage_percent"],
-            "coverage_drop": cov_drop,
-            "added_unmatched": added,
-            "removed_unmatched": removed,
-            "regression": regression,
-        })
+        diff.append(
+            {
+                "pair": key,
+                "coverage_percent": cur["coverage_percent"],
+                "baseline_coverage_percent": base["coverage_percent"],
+                "coverage_drop": cov_drop,
+                "added_unmatched": added,
+                "removed_unmatched": removed,
+                "regression": regression,
+            }
+        )
 
     if json_out:
-        console.print_json(data={
-            "max_added": max_added,
-            "max_coverage_drop": max_coverage_drop,
-            "failed": failed,
-            "diff": diff,
-        })
+        console.print_json(
+            data={
+                "max_added": max_added,
+                "max_coverage_drop": max_coverage_drop,
+                "failed": failed,
+                "diff": diff,
+            }
+        )
     else:
         table = Table(title="Drift gate", header_style="bold")
         table.add_column("pair")
@@ -315,7 +371,9 @@ def check(
         for d in diff:
             pct = "—" if d["coverage_percent"] is None else f"{d['coverage_percent']:.2f}"
             table.add_row(
-                d["pair"], pct, f"{d['coverage_drop']:+.2f}",
+                d["pair"],
+                pct,
+                f"{d['coverage_drop']:+.2f}",
                 str(len(d["added_unmatched"])),
                 str(len(d["removed_unmatched"])),
                 ("[red]YES[/]" if d["regression"] else "[green]no[/]"),
@@ -323,9 +381,11 @@ def check(
         console.print(table)
         for d in diff:
             if d["regression"]:
-                console.print(f"[red]regression[/] in {d['pair']}: "
-                              f"+{len(d['added_unmatched'])} unmatched, "
-                              f"Δ {d['coverage_drop']:+.2f}%")
+                console.print(
+                    f"[red]regression[/] in {d['pair']}: "
+                    f"+{len(d['added_unmatched'])} unmatched, "
+                    f"Δ {d['coverage_drop']:+.2f}%"
+                )
                 if d["added_unmatched"]:
                     for path in d["added_unmatched"]:
                         console.print(f"  [red]+[/] {path}")
@@ -348,9 +408,11 @@ def check(
 @app.command()
 def serve(
     config: Path | None = typer.Option(
-        None, "--config", "-c",
+        None,
+        "--config",
+        "-c",
         help="Optional atlas.yml; if set, its storage.db_path seeds the API "
-             "default. Otherwise ATLAS_DB_PATH (or its default) is used.",
+        "default. Otherwise ATLAS_DB_PATH (or its default) is used.",
     ),
     host: str = typer.Option("127.0.0.1", "--host"),
     port: int = typer.Option(8080, "--port"),
@@ -360,6 +422,7 @@ def serve(
     """Run the read API. Reads the SQLite snapshot at startup and serves
     it via FastAPI / uvicorn at ``--host:--port``."""
     from .api.settings import Settings
+
     if config is not None:
         cfg = _cfg.load_config(config)
         os.environ.setdefault("ATLAS_DB_PATH", str(cfg.storage.db_path))
@@ -369,9 +432,11 @@ def serve(
         f"prefix={settings.api_prefix} host={host}:{port}"
     )
     import uvicorn
+
     uvicorn.run(
         "atlas.api:create_app",
-        host=host, port=port,
+        host=host,
+        port=port,
         reload=reload,
         log_level=log_level,
         factory=True,
@@ -381,6 +446,7 @@ def serve(
 @app.command()
 def version() -> None:
     from . import ATLAS_VERSION
+
     console.print(f"atlas-lite {ATLAS_VERSION}")
 
 

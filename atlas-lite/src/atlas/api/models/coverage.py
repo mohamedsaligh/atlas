@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict
 
 class CoverageRow(BaseModel):
     """Pair-level coverage. Mirrors the ``coverage`` SQLite table."""
+
     model_config = ConfigDict(frozen=True)
 
     repo_id: str

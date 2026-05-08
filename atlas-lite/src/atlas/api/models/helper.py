@@ -9,6 +9,7 @@ class HelperBody(BaseModel):
     """A helper method's source body, line-anchored to the file. Returned
     verbatim so a Business Analyst sees the actual delegation logic.
     """
+
     model_config = ConfigDict(frozen=True)
 
     fqn: str

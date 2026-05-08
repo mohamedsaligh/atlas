@@ -15,7 +15,8 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 REQUEST_ID_CTX: contextvars.ContextVar[str | None] = contextvars.ContextVar(
-    "atlas_request_id", default=None,
+    "atlas_request_id",
+    default=None,
 )
 
 

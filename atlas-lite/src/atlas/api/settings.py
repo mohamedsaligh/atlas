@@ -73,7 +73,14 @@ class Settings(BaseSettings):
     )
     metrics_enabled: bool = Field(
         default=True,
-        description="Expose Prometheus /metrics.",
+        description=(
+            "Expose Prometheus /metrics. The endpoint is part of the "
+            "AuthMiddleware PUBLIC_PATHS allow-list — it is intentionally "
+            "unauthenticated so cluster-internal scrapers work out of the "
+            "box. Production deployments exposed beyond the cluster should "
+            "gate /metrics at the ingress (e.g. require a scrape-only token "
+            "or restrict by source CIDR) rather than relying on app auth."
+        ),
     )
 
     @property

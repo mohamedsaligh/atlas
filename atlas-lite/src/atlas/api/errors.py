@@ -27,7 +27,8 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation_exc(
-        request: Request, exc: RequestValidationError,
+        request: Request,
+        exc: RequestValidationError,
     ) -> JSONResponse:
         return _problem(
             status_code=422,
@@ -38,7 +39,8 @@ def install(app: FastAPI) -> None:
 
     @app.exception_handler(FileNotFoundError)
     async def _missing_db(
-        request: Request, exc: FileNotFoundError,
+        request: Request,
+        exc: FileNotFoundError,
     ) -> JSONResponse:
         return _problem(
             status_code=503,
@@ -59,10 +61,17 @@ def install(app: FastAPI) -> None:
 
 
 def _problem(
-    *, status_code: int, title: str, detail: str | None, instance: str,
+    *,
+    status_code: int,
+    title: str,
+    detail: str | None,
+    instance: str,
 ) -> JSONResponse:
     payload = ProblemDetail(
-        status=status_code, title=title, detail=detail, instance=instance,
+        status=status_code,
+        title=title,
+        detail=detail,
+        instance=instance,
     )
     return JSONResponse(
         status_code=status_code,
