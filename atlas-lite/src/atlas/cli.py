@@ -344,6 +344,39 @@ def check(
 
 
 @app.command()
+def serve(
+    config: Path | None = typer.Option(
+        None, "--config", "-c",
+        help="Optional atlas.yml; if set, its storage.db_path seeds the API "
+             "default. Otherwise ATLAS_DB_PATH (or its default) is used.",
+    ),
+    host: str = typer.Option("127.0.0.1", "--host"),
+    port: int = typer.Option(8080, "--port"),
+    reload: bool = typer.Option(False, "--reload", help="Dev hot-reload."),
+    log_level: str = typer.Option("info", "--log-level"),
+) -> None:
+    """Run the read API. Reads the SQLite snapshot at startup and serves
+    it via FastAPI / uvicorn at ``--host:--port``."""
+    from .api.settings import Settings
+    if config is not None:
+        cfg = _cfg.load_config(config)
+        os.environ.setdefault("ATLAS_DB_PATH", str(cfg.storage.db_path))
+    settings = Settings()
+    console.print(
+        f"[bold green]atlas serve[/] db={settings.resolved_db_path} "
+        f"prefix={settings.api_prefix} host={host}:{port}"
+    )
+    import uvicorn
+    uvicorn.run(
+        "atlas.api:create_app",
+        host=host, port=port,
+        reload=reload,
+        log_level=log_level,
+        factory=True,
+    )
+
+
+@app.command()
 def version() -> None:
     from . import ATLAS_VERSION
     console.print(f"atlas-lite {ATLAS_VERSION}")
