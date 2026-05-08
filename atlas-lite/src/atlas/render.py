@@ -102,10 +102,10 @@ Defined in `{{ ep.file }}` at [L{{ ep.line }}]({{ ep.browse_url or '#' }}).
 
 ## Field-level edges ({{ edges | length }})
 
-| # | source path | → | target path | kind | helper | line |
+| # | source / value | → | target path | kind | helper | line |
 |---|---|---|---|---|---|---|
 {% for e in edges %}
-| {{ loop.index }} | `{{ e.source_path or '_(constant)_' }}` | → | `{{ e.target_path }}` | {{ e.kind }} | {% if e.static_helper_fqn %}`{{ e.static_helper_fqn.split('.')[-2] }}.{{ e.static_helper_fqn.split('.')[-1] }}`{% else %}—{% endif %} | [L{{ e.line }}]({{ e.browse_url or '#' }}) |
+| {{ loop.index }} | `{{ e.display_source }}` | → | `{{ e.target_path }}` | {{ e.kind }} | {% if e.static_helper_fqn %}`{{ e.static_helper_fqn.split('.')[-2] }}.{{ e.static_helper_fqn.split('.')[-1] }}`{% else %}—{% endif %} | [L{{ e.line }}]({{ e.browse_url or '#' }}) |
 {% endfor %}
 
 {% if helpers %}
@@ -336,14 +336,33 @@ def _load_edges_for_ep(
            ORDER BY e.line, e.id""",
         (entry_point_id,),
     ).fetchall()
-    return [
-        {
-            "id": r[0], "kind": r[1], "expression": (r[2] or "")[:80],
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        expression = (r[2] or "")
+        out.append({
+            "id": r[0], "kind": r[1], "expression": expression[:80],
             "line": r[3], "browse_url": r[4], "static_helper_fqn": r[5],
             "source_path": r[6], "target_path": r[7],
-        }
-        for r in rows
-    ]
+            # BA-facing column: when the resolver landed on a real schema
+            # path show that; otherwise surface the literal expression so
+            # constant / construction / format / expression rows are
+            # readable instead of opaque ``_(constant)_`` placeholders.
+            "display_source": _display_source(r[6], expression),
+        })
+    return out
+
+
+def _display_source(source_path: str | None, expression: str) -> str:
+    if source_path:
+        return source_path
+    expr = (expression or "").strip()
+    if not expr:
+        return "_(empty)_"
+    # Markdown table cells: collapse whitespace and escape pipes.
+    expr = " ".join(expr.split()).replace("|", "\\|")
+    if len(expr) > 60:
+        expr = expr[:59] + "…"
+    return expr
 
 
 def _load_helpers_for_ep(

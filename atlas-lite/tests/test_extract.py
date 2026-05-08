@@ -196,6 +196,9 @@ def test_entry_point_markdown_inlines_helper_bodies(tmp_path, monkeypatch):
     assert "class_fqn: com.x.payment.mapper.common.MultihopMapperImpl" in body
 
     # Edge table — exactly one row, with the recovered N-deep source path.
+    # Column header changed to "source / value" so a constant / construction
+    # row can surface its literal expression instead of an opaque placeholder.
+    assert "| source / value | → | target path |" in body
     assert "| → | `agentBic` |" in body
     assert "`txInfo.financialInstId.bic`" in body
 
