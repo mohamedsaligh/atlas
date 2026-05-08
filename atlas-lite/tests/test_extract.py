@@ -9,6 +9,7 @@ from pathlib import Path
 from atlas import config as _cfg
 from atlas import db as _db
 from atlas import extract as _extract
+from atlas import render as _render
 
 
 REPO = Path(__file__).resolve().parents[1]
@@ -157,6 +158,94 @@ def test_multihop_qualifier_to_static_helper_to_param_chain(tmp_path, monkeypatc
     )
     inner_static = next(s for s in e.trail if s.kind == "static_call")
     assert inner_static.helper_fqn.endswith("MapperQualifierUtil.bicFromInst")
+
+
+def test_entry_point_markdown_inlines_helper_bodies(tmp_path, monkeypatch):
+    """BA-grade Markdown: per-entry-point .md inlines every helper body the
+    resolver walked through, line-anchored to source. Multihop fixture
+    exercises a 2-hop chain (qualifier → static_call) so both helper bodies
+    must appear under the same entry-point page."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    multihop_cfg = REPO / "examples" / "atlas.multihop.yml"
+    cfg = _cfg.load_config(multihop_cfg)
+    cfg_dir = multihop_cfg.parent.resolve()
+
+    db_path = tmp_path / "atlas.db"
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+
+    site = tmp_path / "atlas-kb"
+    counts = _render.render_site(conn, site)
+    assert counts["entry_point_md"] >= 1
+    assert counts["index_md"] == 1
+
+    ep_dir = site / "services" / "payment-service" / "multihop_to_local" / "entry-points"
+    md_files = list(ep_dir.glob("*.md"))
+    assert len(md_files) == 1, f"expected one entry-point md, got {md_files!r}"
+    body = md_files[0].read_text(encoding="utf-8")
+
+    # Frontmatter — pivots downstream tooling.
+    assert body.startswith("---\n")
+    assert f"atlas_sha: {atlas_sha}" in body
+    assert "entry_point_id:" in body
+    assert "class_fqn: com.x.payment.mapper.common.MultihopMapperImpl" in body
+
+    # Edge table — exactly one row, with the recovered N-deep source path.
+    assert "| → | `agentBic` |" in body
+    assert "`txInfo.financialInstId.bic`" in body
+
+    # Helper bodies — both hops inlined verbatim, line-anchored.
+    assert "### `com.x.payment.qualifier.QualifierDefinitions.getAgentCpa`" in body
+    assert "### `com.x.payment.util.MapperQualifierUtil.bicFromInst`" in body
+    assert "MapperQualifierUtil.bicFromInst(txInfo.getFinancialInstId())" in body
+    assert "return fi.getBic();" in body
+    # Line anchors must be exact — these are the actual line ranges of the
+    # two helpers in the fixture, and the BA-readable invariant is that the
+    # rendered range matches the source-of-truth file.
+    assert "QualifierDefinitions.java:L8-L13" in body
+    assert "MapperQualifierUtil.java:L6-L8" in body
+
+    # Top-level index lists the entry point.
+    index = (site / "entry-points" / "index.md").read_text(encoding="utf-8")
+    assert "MultihopMapperImpl" in index
+    assert "toLocal" in index
+
+
+def test_render_is_deterministic(tmp_path, monkeypatch):
+    """The Markdown render must be byte-identical across repeated runs over
+    the same SQLite snapshot. Determinism is a load-bearing invariant —
+    without it, atlas-kb churn pollutes diffs and breaks the drift gate."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    multihop_cfg = REPO / "examples" / "atlas.multihop.yml"
+    cfg = _cfg.load_config(multihop_cfg)
+    cfg_dir = multihop_cfg.parent.resolve()
+
+    db_path = tmp_path / "atlas.db"
+    conn = _db.open_db(db_path)
+    _db.reset(conn)
+    bk = _extract._build_business_keys(cfg, cfg_dir)
+    results = _extract.run_extract(cfg, cfg_dir, file_timeout_s=10.0)
+    atlas_sha = _extract.compute_atlas_sha(cfg, cfg_dir, results)
+    _extract.persist(conn, cfg, cfg_dir, results, bk, atlas_sha)
+
+    site_a = tmp_path / "atlas-kb-a"
+    site_b = tmp_path / "atlas-kb-b"
+    _render.render_site(conn, site_a)
+    _render.render_site(conn, site_b)
+
+    files_a = sorted(p.relative_to(site_a) for p in site_a.rglob("*") if p.is_file())
+    files_b = sorted(p.relative_to(site_b) for p in site_b.rglob("*") if p.is_file())
+    assert files_a == files_b, "render produced different file sets across runs"
+
+    for rel in files_a:
+        a = (site_a / rel).read_bytes()
+        b = (site_b / rel).read_bytes()
+        assert a == b, f"render diverged at {rel}"
 
 
 def test_local_var_init_expression_chasing(tmp_path, monkeypatch):
