@@ -81,11 +81,39 @@ class Storage(BaseModel):
     cache_path: str = "~/.atlas/cache"
 
 
+class SelectorRule(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    class_pattern: str | None = None
+    method_pattern: str | None = None
+    return_type: str | None = None
+    method_fqns: list[str] = Field(default_factory=list)
+
+
+class ResolverConfig(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    qualifier_classes: list[str] = Field(default_factory=list)
+    static_helper_classes: list[str] = Field(default_factory=list)
+    max_depth: int = 5
+    follow_intra_class: bool = True
+
+
+class MethodSelector(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+    id: str
+    description: str | None = None
+    selectors: list[SelectorRule]
+    target_schema: SchemaRef | None = None
+    source_schemas: list[SchemaRef] = Field(default_factory=list)
+    resolvers: ResolverConfig = ResolverConfig()
+    scope_rules: list[ScopeRule] = Field(default_factory=list)
+
+
 class AtlasConfig(BaseModel):
     model_config = ConfigDict(frozen=True, extra="allow")
     version: int
     repos: list[Repo]
-    pairs: list[Pair]
+    pairs: list[Pair] = Field(default_factory=list)
+    method_selectors: list[MethodSelector] = Field(default_factory=list)
     bitbucket: Bitbucket | None = None
     schedule: dict[str, Any] | None = None
     storage: Storage = Storage()

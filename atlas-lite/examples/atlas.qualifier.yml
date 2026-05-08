@@ -1,0 +1,68 @@
+# Atlas Lite — qualifier fixture config.
+# Demonstrates the resolver chain following qualifier instance methods AND
+# static helper methods to recover the true source path.
+version: 1
+
+bitbucket:
+  base_url: https://bitbucket.example.net
+  api_kind: server
+  auth: { token_env: BITBUCKET_TOKEN }
+  browse_template: "{base}/projects/{project}/repos/{repo}/browse/{file}?at={sha}#{line}"
+
+repos:
+  - id: payment-service
+    path: ./examples/fixtures/tiny-qualifier/payment-service
+    project: PMT
+    branch: main
+
+method_selectors:
+  - id: qualified_to_local
+    description: "MapStruct impl with qualifier + static helper wrappers."
+
+    selectors:
+      - class_pattern: ".*QualifiedMapperImpl"
+        method_pattern: "toLocal"
+        return_type: "LocalDomain"
+
+    target_schema:
+      name: LocalDomain
+      file: examples/fixtures/tiny-qualifier/payment-service/payment-mapstruct/src/main/resources/LocalDomain.json
+      kind: json-schema
+      type_fqns: ["com.x.payment.model.local.LocalDomain"]
+
+    source_schemas:
+      - name: Mt103
+        file: examples/fixtures/tiny-qualifier/payment-service/payment-mapstruct/src/main/resources/Mt103.json
+        kind: json-schema
+        type_fqns: ["com.x.payment.model.source.Mt103"]
+
+    resolvers:
+      qualifier_classes:
+        - "com.x.payment.qualifier.QualifierDefinitions"
+        - "com.x.payment.qualifier.*"
+      static_helper_classes:
+        - "com.x.payment.util.*"
+      max_depth: 5
+      follow_intra_class: true
+
+# Back-compat: extractor still requires `pairs` today (method_selector-only mode
+# is the next slice). Provide an equivalent pair so this fixture runs end-to-end.
+pairs:
+  - id: qualified_to_local
+    sources:
+      - name: Mt103
+        file: examples/fixtures/tiny-qualifier/payment-service/payment-mapstruct/src/main/resources/Mt103.json
+        kind: json-schema
+        type_fqns: ["com.x.payment.model.source.Mt103"]
+    targets:
+      - name: LocalDomain
+        file: examples/fixtures/tiny-qualifier/payment-service/payment-mapstruct/src/main/resources/LocalDomain.json
+        kind: json-schema
+        type_fqns: ["com.x.payment.model.local.LocalDomain"]
+    scan_globs:
+      - "payment-service/payment-mapstruct/src/main/java/**/mapper/**/*.java"
+
+storage:
+  db_path: ~/.atlas/qualifier.db
+  site_path: ~/.atlas/qualifier-site
+  cache_path: ~/.atlas/qualifier-cache

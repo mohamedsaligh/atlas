@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Mt103",
+  "type": "object",
+  "properties": {
+    "field20":  { "type": "string", "x-atlas-business-key": "TransactionReference" },
+    "field50K": { "type": "string", "x-atlas-business-key": "DebtorIBAN" },
+    "field59":  { "type": "string", "x-atlas-business-key": "CreditorName" },
+    "field70":  { "type": "string", "x-atlas-business-key": "PurposeOfPayment" }
+  }
+}

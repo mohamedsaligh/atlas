@@ -97,6 +97,21 @@ CREATE TABLE IF NOT EXISTS edge_test (
     PRIMARY KEY (edge_id, test_id)
 );
 
+-- Per-edge resolution trail. Each row is one step Atlas walked through to
+-- resolve the source path: setter site, wrapper-arg, qualifier method body,
+-- static-helper body, intra-class helper body. seq is 0-indexed in walk order.
+CREATE TABLE IF NOT EXISTS edge_resolution (
+    edge_id    TEXT NOT NULL,
+    seq        INTEGER NOT NULL,
+    kind       TEXT NOT NULL,        -- direct | wrapper_arg | qualifier | static_call | intra_class
+    file       TEXT NOT NULL,
+    line       INTEGER NOT NULL,
+    snippet    TEXT NOT NULL,
+    helper_fqn TEXT,
+    PRIMARY KEY (edge_id, seq)
+);
+CREATE INDEX IF NOT EXISTS idx_edge_resolution_helper ON edge_resolution(helper_fqn);
+
 CREATE TABLE IF NOT EXISTS coverage (
     repo_id           TEXT NOT NULL,
     pair_id           TEXT NOT NULL,

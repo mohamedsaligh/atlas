@@ -46,7 +46,14 @@ import tree_sitter
 import tree_sitter_java
 
 from . import ATLAS_VERSION, TS_JAVA_VERSION
-from .config import AtlasConfig, Pair, Repo, SchemaRef
+from .config import AtlasConfig, MethodSelector, Pair, Repo, ResolverConfig, SchemaRef
+from .index import JavaIndex, build_index
+from .resolvers import (
+    ParamBinding as ResolverParamBinding,
+    Resolution,
+    SourceMatch,
+    resolve_source,
+)
 from .schemas import FieldAttrs, enumerate_fields
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -97,7 +104,7 @@ class Edge:
     pair_id: str
     mapper_id: str
     mapper_kind: str
-    kind: str                # rename | constant | format | expression | concat | static_call | enrichment | unmapped
+    kind: str                # rename | constant | format | expression | concat | static_call | enrichment | unmapped | qualifier
     source: FieldRef | None
     target: FieldRef
     expression: str
@@ -105,6 +112,7 @@ class Edge:
     format_spec: dict[str, Any] | None
     git: GitRef
     scope: dict[str, Any] = field(default_factory=dict)
+    trail: tuple[Resolution, ...] = ()
 
     def edge_id(self, repo_id: str) -> str:
         h = hashlib.sha1(
@@ -151,17 +159,39 @@ def run_extract(
     out: dict[tuple[str, str], ExtractResult] = {}
     business_keys = _build_business_keys(cfg, cfg_dir)
 
+    # Build a single repo-wide AST index. Used by the resolver chain to look up
+    # qualifier classes, static helpers, and intra-class helpers across files.
+    repo_paths = [Path(os.path.expanduser(r.path)).resolve() for r in cfg.repos
+                  if (not repo_filter or r.id == repo_filter)]
+    index = build_index(repo_paths, verbose=verbose)
+
+    # The resolver config is per-pair (or per-method-selector). Default to an
+    # empty config when none provided — back-compat with the existing pair model.
+    resolver_cfg_default = ResolverConfig()
+
+    # Map each pair_id to its resolver config (taken from method_selectors of
+    # the same id, when present). This lets users configure qualifier_classes
+    # and static_helper_classes on a per-pair basis from atlas.yml.
+    selectors_by_id = {ms.id: ms for ms in cfg.method_selectors}
+
     for pair in cfg.pairs:
         if pair_filter and pair.id != pair_filter:
             continue
+        rcfg = selectors_by_id[pair.id].resolvers if pair.id in selectors_by_id else resolver_cfg_default
         for repo in cfg.repos:
             if repo_filter and repo.id != repo_filter:
                 continue
             sha = _git_sha(repo.path)
             if verbose:
-                print(f"[atlas] extract pair={pair.id} repo={repo.id} sha={sha[:8]}", file=sys.stderr)
+                print(
+                    f"[atlas] extract pair={pair.id} repo={repo.id} sha={sha[:8]} "
+                    f"resolvers=qualifiers:{len(rcfg.qualifier_classes)} "
+                    f"statics:{len(rcfg.static_helper_classes)} max_depth:{rcfg.max_depth}",
+                    file=sys.stderr,
+                )
             result = _run_pair_repo(
-                cfg, cfg_dir, pair, repo, sha, business_keys, file_timeout_s, verbose
+                cfg, cfg_dir, pair, repo, sha, business_keys, file_timeout_s, verbose,
+                index=index, resolver_cfg=rcfg,
             )
             out[(repo.id, pair.id)] = result
     return out
@@ -181,6 +211,9 @@ def _run_pair_repo(
     business_keys: dict[str, dict[str, FieldAttrs]],
     file_timeout_s: float,
     verbose: bool,
+    *,
+    index: JavaIndex,
+    resolver_cfg: ResolverConfig,
 ) -> ExtractResult:
     result = ExtractResult()
     repo_root = Path(repo.path).expanduser().resolve()
@@ -224,6 +257,8 @@ def _run_pair_repo(
                 default_source=default_source,
                 default_target=default_target,
                 scope=_infer_scope(rel, pair.scan_globs, pair.scope_rules),
+                index=index,
+                resolver_cfg=resolver_cfg,
             )
             walker.walk(result)
         except Exception as e:
@@ -237,11 +272,8 @@ def _run_pair_repo(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@dataclass
-class ParamBinding:
-    var_name: str
-    type_fqn: str
-    schema_id: str
+# ParamBinding moved to resolvers.py (single source of truth across modules).
+ParamBinding = ResolverParamBinding
 
 
 @dataclass
@@ -258,6 +290,8 @@ class FileWalker:
     default_source: SchemaRef
     default_target: SchemaRef
     scope: dict[str, Any]
+    index: JavaIndex
+    resolver_cfg: ResolverConfig
 
     def walk(self, result: ExtractResult) -> None:
         text = self.file.read_bytes()
@@ -427,16 +461,26 @@ class FileWalker:
                     )
                     return
 
-        # Classify + extract source.
+        # Classify + resolve source via the new chain (qualifier / static / intra-class).
         kind = _classify(first_arg, text)
-        source_match = _extract_source(first_arg, text, params)
+        match = resolve_source(
+            first_arg, text, self.rel, params, self.index, self.resolver_cfg,
+        )
         static_helper_fqn = _extract_static_helper_fqn(first_arg, text, imports)
+
+        # Refine kind based on what the resolver did.
+        trail: tuple[Resolution, ...] = ()
+        if match is not None:
+            trail = match.trail
+            if any(s.kind == "qualifier" for s in trail):
+                kind = "qualifier"
+            elif any(s.kind == "static_call" for s in trail):
+                kind = "static_call"
 
         target_field = self._field_ref(target_fqn, full_path, self.default_target)
         source_field: FieldRef | None = None
-        if source_match is not None:
-            binding, source_path = source_match
-            source_field = self._field_ref_for_binding(binding, source_path)
+        if match is not None:
+            source_field = self._field_ref_for_binding(match.binding, match.path)
 
         result.edges.append(Edge(
             pair_id=self.pair.id,
@@ -450,6 +494,7 @@ class FileWalker:
             format_spec=None,
             git=GitRef(self.repo.id, self.sha, self.rel, line, self._browse_url(line)),
             scope=self.scope,
+            trail=trail,
         ))
 
     def _handle_enrichment(
@@ -1161,13 +1206,20 @@ def persist(
                         (src_fid, e.source.schema_id, e.source.path, e.source.business_key, None),
                     )
                     seen_field_ids.add(src_fid)
+            eid = e.edge_id(repo_id)
             cur.execute(
                 "INSERT OR REPLACE INTO edge VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                (e.edge_id(repo_id), e.pair_id, e.mapper_id, src_fid, tgt_fid,
+                (eid, e.pair_id, e.mapper_id, src_fid, tgt_fid,
                  e.kind, e.expression, e.static_helper_fqn,
                  json.dumps(e.format_spec, sort_keys=True) if e.format_spec else None,
                  e.git.file, e.git.line, e.git.sha, e.git.browse_url),
             )
+            cur.execute("DELETE FROM edge_resolution WHERE edge_id = ?", (eid,))
+            for seq, step in enumerate(e.trail):
+                cur.execute(
+                    "INSERT INTO edge_resolution VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (eid, seq, step.kind, step.file, step.line, step.snippet, step.helper_fqn),
+                )
             edge_total += 1
         cur.execute(
             "INSERT OR REPLACE INTO coverage VALUES (?, ?, ?, ?, ?, ?, ?)",

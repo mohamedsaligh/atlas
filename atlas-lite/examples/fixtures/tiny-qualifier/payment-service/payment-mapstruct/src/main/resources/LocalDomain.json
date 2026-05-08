@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "LocalDomain",
+  "type": "object",
+  "properties": {
+    "txnRef":      { "type": "string", "x-atlas-business-key": "TransactionReference" },
+    "iban":        { "type": "string", "x-atlas-business-key": "DebtorIBAN" },
+    "beneficiary": { "type": "string", "x-atlas-business-key": "CreditorName" },
+    "purpose":     { "type": "string", "x-atlas-business-key": "PurposeOfPayment" },
+    "channel":     { "type": "string" }
+  }
+}
