@@ -29,12 +29,12 @@ PY = sys.executable
 
 TARGETS: dict[str, list[str]] = {
     "lint": [
-        f"{PY} -m ruff check src tests",
-        f"{PY} -m ruff format --check src tests",
+        f"{PY} -m ruff check src tests tasks.py",
+        f"{PY} -m ruff format --check src tests tasks.py",
     ],
     "format": [
-        f"{PY} -m ruff format src tests",
-        f"{PY} -m ruff check --fix src tests",
+        f"{PY} -m ruff format src tests tasks.py",
+        f"{PY} -m ruff check --fix src tests tasks.py",
     ],
     "typecheck": [
         f"{PY} -m mypy src/atlas",
@@ -72,6 +72,7 @@ def _runner(name: str) -> Callable[[], int]:
             if rc != 0:
                 return rc
         return 0
+
     return fn
 
 

@@ -126,6 +126,7 @@ source = ["src/atlas"]
 omit = [
     "src/atlas/__main__.py",
     "src/atlas/validate.py",  # dead code path, scheduled for removal
+    "tasks.py",  # local task runner, not shipped in the wheel
     "tests/*",
 ]
 
