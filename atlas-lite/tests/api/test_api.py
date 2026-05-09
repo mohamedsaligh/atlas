@@ -149,3 +149,18 @@ def test_openapi_is_published(client):
 def test_pagination_size_cap_is_enforced(client):
     r = client.get("/api/v1/entry-points", params={"size": 999999})
     assert r.status_code == 422
+
+
+def test_graph_endpoint_returns_node_link_payload(client):
+    r = client.get("/api/v1/graph", params={"limit": 50})
+    assert r.status_code == 200
+    body = r.json()
+    assert "nodes" in body and "links" in body and "truncated" in body
+    kinds = {n["kind"] for n in body["nodes"]}
+    assert "entry_point" in kinds
+    # multihop fixture has one entry point + one source + one target = 3 nodes
+    # and one read + one write link = 2 links.
+    assert any(n["kind"] == "field" for n in body["nodes"])
+    link_kinds = {l_["kind"] for l_ in body["links"]}
+    assert link_kinds <= {"reads", "writes", "spans"}
+    assert body["truncated"] is False

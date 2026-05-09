@@ -17,7 +17,7 @@ from .middleware.auth import validate_settings as _validate_auth
 from .middleware.request_id import RequestIdMiddleware
 from .observability import logging as _obs_logging
 from .observability import metrics as _obs_metrics
-from .routers import coverage, entry_points, fields, health, impact, snapshot
+from .routers import coverage, entry_points, fields, graph, health, impact, snapshot
 from .settings import Settings
 
 
@@ -77,6 +77,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         entry_points.router,
         impact.router,
         fields.router,
+        graph.router,
     ):
         app.include_router(r, prefix=cfg.api_prefix)
 

@@ -1,11 +1,17 @@
+import { lazy, Suspense } from "react";
 import { Route, Routes } from "react-router-dom";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { BrowseRoute } from "@/routes/BrowseRoute";
 import { EntryPointDetailRoute } from "@/routes/EntryPointDetailRoute";
 import { HomeRoute } from "@/routes/HomeRoute";
+import { ImpactRoute } from "@/routes/ImpactRoute";
 import { NotFoundRoute } from "@/routes/NotFoundRoute";
-import { StubRoute } from "@/routes/StubRoute";
+
+// /graph pulls in Three.js — keep it off the initial bundle.
+const GraphRoute = lazy(() =>
+  import("@/routes/GraphRoute").then((m) => ({ default: m.GraphRoute })),
+);
 
 export default function App() {
   return (
@@ -14,22 +20,13 @@ export default function App() {
         <Route index element={<HomeRoute />} />
         <Route path="browse" element={<BrowseRoute />} />
         <Route path="entry-points/:id" element={<EntryPointDetailRoute />} />
-        <Route
-          path="impact"
-          element={
-            <StubRoute
-              title="Impact analysis"
-              body="Type a schema:path on the right, see every affected target field grouped by scope. Lights up in the next commit."
-            />
-          }
-        />
+        <Route path="impact" element={<ImpactRoute />} />
         <Route
           path="graph"
           element={
-            <StubRoute
-              title="Force-directed lineage graph"
-              body="Obsidian-style 3D graph backed by Three.js. Lights up in the next commit."
-            />
+            <Suspense fallback={null}>
+              <GraphRoute />
+            </Suspense>
           }
         />
         <Route path="*" element={<NotFoundRoute />} />

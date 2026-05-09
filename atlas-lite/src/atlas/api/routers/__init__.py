@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from . import coverage, entry_points, fields, health, impact, snapshot
+from . import coverage, entry_points, fields, graph, health, impact, snapshot
 
-__all__ = ["coverage", "entry_points", "fields", "health", "impact", "snapshot"]
+__all__ = ["coverage", "entry_points", "fields", "graph", "health", "impact", "snapshot"]

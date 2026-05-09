@@ -6,6 +6,7 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { api, buildQuery } from "./client";
+import type { GraphResponse } from "./graph-types";
 import type {
   CoverageRow,
   EdgeRow,
@@ -151,3 +152,34 @@ export function useFieldSearch(query: FieldSearch | null) {
 }
 
 export type EntryPointEdgesPage = Page<EdgeRow>;
+
+export interface GraphFilters {
+  repo?: string;
+  pair?: string;
+  country?: string;
+  clearing?: string;
+  product?: string;
+  class_fqn?: string;
+  limit?: number;
+}
+
+export function useGraph(filters: GraphFilters = {}, enabled = true) {
+  return useQuery<GraphResponse>({
+    queryKey: ["graph", filters],
+    queryFn: () =>
+      api<GraphResponse>(
+        `/graph${buildQuery({
+          repo: filters.repo,
+          pair: filters.pair,
+          country: filters.country,
+          clearing: filters.clearing,
+          product: filters.product,
+          class_fqn: filters.class_fqn,
+          limit: filters.limit ?? 1500,
+        })}`,
+      ),
+    enabled,
+    placeholderData: keepPreviousData,
+    staleTime: STALE_15_MIN,
+  });
+}

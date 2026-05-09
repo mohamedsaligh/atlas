@@ -12,6 +12,7 @@ from .coverage import CoverageRow
 from .edge import EdgeRow, EdgeWithResolution, ResolutionStep
 from .entry_point import EntryPointDetail, EntryPointSummary
 from .field import FieldRow
+from .graph import GraphLink, GraphNode, GraphResponse
 from .helper import HelperBody
 from .impact import ImpactRow
 from .snapshot import HealthResponse, SnapshotInfo
@@ -23,6 +24,9 @@ __all__ = [
     "EntryPointDetail",
     "EntryPointSummary",
     "FieldRow",
+    "GraphLink",
+    "GraphNode",
+    "GraphResponse",
     "HealthResponse",
     "HelperBody",
     "ImpactRow",
