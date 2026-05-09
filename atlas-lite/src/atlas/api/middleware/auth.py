@@ -129,7 +129,8 @@ def validate_settings(settings: Settings) -> None:
 
 def _load_jwks(issuer: str) -> dict[str, Any]:
     if issuer in _JWKS_CACHE:
-        return _JWKS_CACHE[issuer]
+        cached: dict[str, Any] = _JWKS_CACHE[issuer]
+        return cached
     discovery_url = issuer.rstrip("/") + "/.well-known/openid-configuration"
     config = _http_get_json(discovery_url)
     jwks_uri = config["jwks_uri"]

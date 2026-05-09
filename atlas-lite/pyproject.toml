@@ -20,6 +20,7 @@ dependencies = [
     "python-jose[cryptography]>=3.3",
     "cachetools>=5.5",
     "prometheus-client>=0.21",
+    "types-pyyaml",
 ]
 
 [project.optional-dependencies]
