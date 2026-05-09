@@ -18,9 +18,69 @@ import { Workflow } from "lucide-react";
 import { memo, useCallback, useEffect, useMemo, useRef } from "react";
 import ForceGraph3D, { type ForceGraphMethods } from "react-force-graph-3d";
 import * as THREE from "three";
-import SpriteText from "three-spritetext";
 
 import type { GraphLink, GraphNode, GraphResponse } from "@/api/graph-types";
+
+// Minimal label sprite. We render text into a 2D canvas, upload it as a
+// THREE.CanvasTexture, and use a Sprite mesh to display it. Cheaper and
+// dependency-free vs pulling a third-party label package.
+function makeLabelSprite(text: string, opts: { color?: string; bg?: string } = {}): THREE.Sprite {
+  const color = opts.color ?? "#e6edf3";
+  const bg = opts.bg ?? "rgba(11, 13, 16, 0.78)";
+  const fontSize = 32;
+  const padding = 8;
+  const font = `${fontSize}px 'JetBrains Mono', ui-monospace, monospace`;
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return new THREE.Sprite(new THREE.SpriteMaterial());
+  }
+  ctx.font = font;
+  const metrics = ctx.measureText(text);
+  const textW = Math.ceil(metrics.width);
+  const w = textW + padding * 2;
+  const h = fontSize + padding * 2;
+  // Up-scale for retina sharpness.
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = w * dpr;
+  canvas.height = h * dpr;
+  ctx.scale(dpr, dpr);
+
+  // Background pill.
+  ctx.fillStyle = bg;
+  const r = 4;
+  ctx.beginPath();
+  ctx.moveTo(r, 0);
+  ctx.lineTo(w - r, 0);
+  ctx.quadraticCurveTo(w, 0, w, r);
+  ctx.lineTo(w, h - r);
+  ctx.quadraticCurveTo(w, h, w - r, h);
+  ctx.lineTo(r, h);
+  ctx.quadraticCurveTo(0, h, 0, h - r);
+  ctx.lineTo(0, r);
+  ctx.quadraticCurveTo(0, 0, r, 0);
+  ctx.closePath();
+  ctx.fill();
+
+  // Text.
+  ctx.font = font;
+  ctx.fillStyle = color;
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, padding, h / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  texture.needsUpdate = true;
+
+  const material = new THREE.SpriteMaterial({ map: texture, depthWrite: false, transparent: true });
+  const sprite = new THREE.Sprite(material);
+  // Sprite world-size — chosen to read clearly at default camera distance.
+  const worldH = 4;
+  const worldW = (worldH * w) / h;
+  sprite.scale.set(worldW, worldH, 1);
+  return sprite;
+}
 
 type SimNode = GraphNode & { x?: number; y?: number; z?: number };
 type SimLink = GraphLink;
@@ -98,13 +158,9 @@ function ForceGraphInner({ data, highlight }: ForceGraphProps) {
       // Only label entry points and highlighted fields — too dense
       // otherwise. Sprite labels stay readable at any zoom.
       if (isEP || matchSet?.has(n.id)) {
-        const label = new SpriteText(n.label.length > 32 ? `${n.label.slice(0, 31)}…` : n.label);
-        label.color = "#e6edf3";
-        label.backgroundColor = "rgba(11, 13, 16, 0.78)";
-        label.padding = 1.2;
-        label.borderRadius = 2;
-        label.textHeight = isEP ? 3.4 : 2.6;
-        label.fontFace = "'JetBrains Mono', ui-monospace, monospace";
+        const label = makeLabelSprite(
+          n.label.length > 32 ? `${n.label.slice(0, 31)}…` : n.label,
+        );
         label.position.set(0, radius + 4, 0);
         sphere.add(label);
       }
