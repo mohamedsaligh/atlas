@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* GitHub-dark inspired palette. Tuned for high info density on dense
+ * tabular UIs. CSS vars in HSL for friction-free theming. */
+:root {
+  --bg: 220 14% 6%;
+  --bg-subtle: 220 13% 9%;
+  --bg-raised: 220 13% 11%;
+  --bg-inset: 220 14% 4%;
+  --fg: 213 27% 92%;
+  --fg-muted: 213 9% 60%;
+  --fg-subtle: 213 9% 45%;
+  --border: 220 13% 17%;
+  --border-strong: 220 13% 28%;
+  --accent: 212 100% 67%;
+  --accent-fg: 0 0% 100%;
+  --accent-muted: 212 80% 30%;
+  --success: 134 56% 49%;
+  --warn: 41 86% 49%;
+  --danger: 0 90% 64%;
+  color-scheme: dark;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body {
+    @apply h-full;
+    font-feature-settings:
+      "cv02",
+      "cv03",
+      "cv04",
+      "cv11";
+  }
+  body {
+    @apply bg-bg text-fg;
+    background-image:
+      radial-gradient(circle at top, hsl(220 13% 12%) 0%, transparent 60%),
+      radial-gradient(circle at 0% 100%, hsl(220 13% 10%) 0%, transparent 60%);
+    background-attachment: fixed;
+  }
+  ::selection {
+    background-color: hsl(var(--accent) / 0.32);
+    color: hsl(var(--fg));
+  }
+  /* GPU-friendly scrollbars. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--border-strong));
+    background-clip: padding-box;
+    border: 2px solid transparent;
+  }
+  code,
+  kbd,
+  pre,
+  samp {
+    @apply font-mono;
+  }
+  /* Subtle focus ring. Matches FAANG default of "obvious but never gaudy". */
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent/70 ring-offset-2 ring-offset-bg;
+  }
+}
+
+@layer utilities {
+  .surface {
+    background-color: hsl(var(--bg-subtle));
+    border: 1px solid hsl(var(--border));
+  }
+  .surface-raised {
+    background-color: hsl(var(--bg-raised));
+    border: 1px solid hsl(var(--border));
+    box-shadow:
+      0 1px 0 hsl(0 0% 100% / 0.02) inset,
+      0 8px 24px -12px hsl(0 0% 0% / 0.6);
+  }
+  .gpu {
+    transform: translateZ(0);
+    will-change: transform;
+  }
+}
